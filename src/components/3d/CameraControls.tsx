@@ -29,8 +29,7 @@ export const Controls = forwardRef<CameraControlsRef, CameraControlsProps>(({ en
     <OrbitControls
       ref={controlsRef}
       target={DEFAULT_CAMERA_TARGET}
-      enablePan={true}
-      panSpeed={0.6}
+      enablePan={false}
       enableZoom={true}
       zoomSpeed={0.8}
       enableRotate={true}

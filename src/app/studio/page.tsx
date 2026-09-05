@@ -107,9 +107,8 @@ export default function StudioPage() {
           pointerEvents: 'none',
           boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
         }}>
-          <div><strong>Drag:</strong> Rotate Camera</div>
+          <div><strong>Drag / Touch:</strong> Rotate Camera</div>
           <div><strong>Scroll / Pinch:</strong> Zoom</div>
-          <div><strong>Right Drag / Touch:</strong> Pan</div>
         </div>
       </main>
     </div>

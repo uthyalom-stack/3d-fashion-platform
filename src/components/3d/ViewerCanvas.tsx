@@ -54,7 +54,7 @@ function WebGLUnsupportedFallback() {
 
 const emptySubscribe = () => () => {};
 const getClientSnapshot = () => isWebGLAvailable();
-const getServerSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 export const ViewerCanvas = forwardRef<CameraControlsRef, ViewerCanvasProps>(
   ({ className = '', showGrid = true }, ref) => {
