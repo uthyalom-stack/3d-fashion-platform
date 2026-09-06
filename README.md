@@ -1,12 +1,34 @@
-# 3D Fashion Platform — Phase 1 Real 3D Engine Foundation
+# 3D Fashion Platform — Phase 2 Avatar System Foundation
 
-A clean, lightweight, open-source-first web foundation for a future standalone 3D fashion visualization platform.
+A clean, lightweight, open-source-first web foundation for a standalone 3D fashion visualization platform.
 
 ## Project Overview
 
-This project establishes the 3D runtime foundation for the **3D Fashion Platform**.
-- **Phase 0:** Provided high-performance 3D scene engine, dynamic camera controls, studio three-point lighting, and procedural mannequin avatar placeholder built with web-native 3D primitives.
-- **Phase 1:** Establishes reusable GLB/glTF model loading infrastructure, generic 3D asset contracts, and safe Three.js memory disposal lifecycle management.
+This project establishes the 3D runtime and avatar foundation for the **3D Fashion Platform**.
+- **Phase 0:** High-performance 3D scene engine, dynamic camera controls, studio three-point lighting, and procedural mannequin avatar placeholder.
+- **Phase 1:** Reusable GLB/glTF model loading infrastructure, generic 3D asset contracts, and safe Three.js memory disposal lifecycle management.
+- **Phase 2:** Base Avatar Foundation — Replaces the procedural mannequin placeholder with a real, license-safe open-source GLB/glTF avatar asset (`base-avatar.glb`), encapsulated in a clean, reusable `<Avatar />` component and backed by skeletal joint contracts ready for future garment attachments.
+
+## Base Avatar Specifications & License
+
+- **Asset Name**: RiggedFigure (Base Avatar)
+- **Asset Location**: `public/models/avatar/base-avatar.glb`
+- **Original Source**: Khronos Group glTF Sample Models (`KhronosGroup/glTF-Sample-Models`)
+- **Donor / Author**: Donated by [Cesium](https://cesium.com/) for glTF testing and open 3D standard compliance.
+- **License**: Creative Commons Attribution 4.0 International (CC-BY 4.0)
+- **Attribution Notice**: "RiggedFigure 3D Model donated by Cesium to the Khronos Group glTF Sample Models repository, licensed under Creative Commons Attribution 4.0 International (CC-BY 4.0)."
+
+### Coordinate System & Alignment Assumptions
+
+- **Origin**: Centered on origin `[0, 0, 0]` at floor/ground level (contact point).
+- **Vertical Orientation**: `+Y` is UP, `+Z` is FORWARD.
+- **Height & Scale**: Native GLB height is ~1.45m. The `<Avatar />` component defaults to `scale={1.18}`, producing a standard ~1.71m tall fashion avatar that fits standard studio camera framing.
+- **Pose**: Neutral rest pose suitable as a fashion mannequin and base figure.
+- **Skeletal Joints**: Preserves a 19-bone joint hierarchy for future garment anchor points:
+  - Torso & Waist: `torso_joint_1`, `torso_joint_2`, `torso_joint_3`
+  - Head & Neck: `neck_joint_1`, `neck_joint_2`
+  - Arms & Hands: `arm_joint_L_1` to `3` (Left), `arm_joint_R_1` to `3` (Right)
+  - Legs & Feet: `leg_joint_L_1` to `5` (Left), `leg_joint_R_1` to `5` (Right)
 
 ## Technology Foundation & Stack
 
@@ -17,20 +39,14 @@ This project establishes the 3D runtime foundation for the **3D Fashion Platform
 - **React 3D Renderer:** React Three Fiber (`@react-three/fiber`)
 - **3D Helpers & Utilities:** `@react-three/drei`
 
-### Why React Three Fiber + Three.js?
-
-1. **Declarative Component Architecture:** React Three Fiber enables modular 3D scene composition using standard React component trees and state management, separating 3D rendering concerns cleanly from standard web UI.
-2. **Industry Standard & Open Source:** Three.js is the premier open-source WebGL/WebGPU library with active community support, extensive asset format compatibility (glTF/GLB), and zero proprietary license locks.
-3. **High-Performance Rendering & Asset Isolation:** R3F handles the animation loop, frame scheduling, and canvas lifecycle efficiently, while custom lifecycle utilities prevent WebGL memory leaks during model updates and unmounting.
-
 ## Free & Open-Source-First Dependency Principle
 
 This project adheres strictly to an open-source first philosophy:
-- Uses permissive open-source licenses (MIT/Apache-2.0).
+- Permissive open-source licenses (MIT/Apache-2.0 / CC-BY 4.0).
 - Zero paid SaaS dependencies, proprietary visualization SDKs, or commercial 3D engine licenses.
-- Zero external network requests or paid asset APIs at this stage.
+- Zero external network requests or paid asset APIs at runtime.
 
-For a full breakdown of third-party dependencies and licenses, see [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
+For a full breakdown of third-party dependencies and asset licenses, see [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
 
 ## Project Architecture
 
@@ -42,15 +58,20 @@ app/
 
 public/
 └── models/
-    └── test-cube.glb   # Procedurally generated open-source dev test GLB asset
+    ├── avatar/
+    │   ├── README.md           # Avatar asset specs & CC-BY 4.0 license documentation
+    │   └── base-avatar.glb     # Real open-source runtime GLB base avatar asset
+    └── test-cube.glb           # Procedurally generated open-source dev test GLB asset
 
 scripts/
+├── test-avatar.js      # Unit test verifying avatar GLB presence, format & joint hierarchy
 └── test-ownership.js   # Unit test verifying Three.js resource lifecycle & ownership
 
 src/
 ├── components/
 │   └── 3d/
-│       ├── AvatarPlaceholder.tsx  # Procedural mannequin built from Three.js primitives
+│       ├── Avatar.tsx             # Reusable Base Avatar component (Scene -> Avatar -> ModelLoader -> GLB)
+│       ├── AvatarPlaceholder.tsx  # Fallback procedural mannequin built from Three.js primitives
 │       ├── CameraControls.tsx     # OrbitControls with limits & camera reset capability
 │       ├── Lighting.tsx           # Studio three-point lighting & hemisphere ambient light
 │       ├── ModelLoader.tsx        # Reusable GLB/glTF asset loader with isolation & cleanup
@@ -66,15 +87,13 @@ src/
     └── 3d.ts                      # TypeScript definitions & generic 3D asset interfaces
 ```
 
-### Architectural Decoupling & Resource Ownership Rules
+### 3D Component Flow & Resource Ownership
 
-Each 3D concern is independently replaceable and follows strict resource ownership principles:
-- **`useGLTF` Cache Ownership:** The `@react-three/drei` loader cache retains primary ownership of loaded `BufferGeometry`, base `Material`, and `Texture` GPU allocations.
-- **`ModelLoader` Scene Isolation:** `ModelLoader` always clones the Object3D scene hierarchy (`gltf.scene.clone(true)`), giving every component instance an isolated transform tree.
-- **Instance Material Ownership (`deepCloneMaterials`):** When `deepCloneMaterials` is enabled, `ModelLoader` creates instance-owned material clones so material edits do not mutate the shared cache. Upon unmounting, `dispose3DObject` cleans up instance-owned materials (`disposeMaterials: true`) while leaving shared geometries and textures untouched (`disposeGeometries: false`). React Strict Mode effect replays are handled safely by storing original material references in `userData` and restoring them prior to disposal.
-- **`ViewerCanvas`:** Wraps WebGL detection and dynamic Canvas initialization.
-- **`AvatarPlaceholder`:** Renders the base mannequin and accepts `garmentSlots` interface props, allowing future GLB garment models to attach without changing page structure.
-- **`CameraControls`:** Exposes an imperative `resetCamera` handle to parent controls.
+Each 3D component has clear single responsibilities:
+- **Architecture Flow**: `Scene → Avatar → ModelLoader → useGLTF → GLB`.
+- **`Avatar` Component**: Encapsulates avatar model path, default scale/offset transforms, and attachment slot group containers.
+- **`ModelLoader` Scene Isolation**: Always clones the Object3D scene graph (`gltf.scene.clone(true)`), ensuring instance transform isolation.
+- **`useGLTF` Cache Ownership**: GPU memory allocations (`BufferGeometry`, base `Material`, `Texture`) are owned by the loader cache and preserved during instance unmounts.
 
 ## Getting Started
 
@@ -111,8 +130,9 @@ Run ESLint:
 npm run lint
 ```
 
-Run Resource Ownership Tests:
+Run Unit & Resource Ownership Tests:
 ```bash
+node scripts/test-avatar.js
 node scripts/test-ownership.js
 ```
 
@@ -128,14 +148,13 @@ Start the production server:
 npm start
 ```
 
-## Intentionally NOT Implemented Yet (Phase 1 Scope Boundary)
+## Intentionally NOT Implemented Yet (Phase 2 Scope Boundary)
 
-To keep the codebase lean and modular, the following systems are intentionally deferred to future phases:
-- Real production garment systems / product catalogs
-- Databases / ORM
+To keep the codebase modular, the following systems remain intentionally deferred to future phases:
+- Garment attachment / cloth simulation / soft body physics
+- Product catalog / pricing / store / checkout / commerce logic
+- Databases / Prisma / ORM
 - User Authentication & Account management
-- Monetization / Payment / Commerce systems
-- External APIs or Cloud Storage (AWS S3, Cloudflare R2)
-- Multi-tenancy / Admin dashboards
-- AI pipelines / Automatic garment generation
-- Cloth physics / Soft body simulation
+- Cloud storage (AWS S3, Cloudflare R2)
+- Body measurement / fitting / multiple body types / customization UI
+- AI garment generation

@@ -2,6 +2,7 @@
 
 import React, { forwardRef } from 'react';
 import { StudioLighting } from './Lighting';
+import { Avatar } from './Avatar';
 import { AvatarPlaceholder } from './AvatarPlaceholder';
 import { ModelLoader } from './ModelLoader';
 import { ThreeErrorBoundary } from './ThreeErrorBoundary';
@@ -23,8 +24,14 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
         {/* Lighting system */}
         <StudioLighting />
 
-        {/* Centered Avatar Placeholder (Phase 0 Mannequin) */}
-        <AvatarPlaceholder position={[0, 0, 0]} />
+        {/* Base Avatar System (Phase 2 Foundation) */}
+        <ThreeErrorBoundary
+          fallback={<AvatarPlaceholder position={[0, 0, 0]} />}
+        >
+          <React.Suspense fallback={<AvatarPlaceholder position={[0, 0, 0]} />}>
+            <Avatar position={[0, 0, 0]} />
+          </React.Suspense>
+        </ThreeErrorBoundary>
 
         {/* Dynamic 3D Asset Loader (Phase 1 Engine Integration) */}
         {activeModelUrl && (
@@ -38,11 +45,13 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
               </group>
             }
           >
-            <ModelLoader
-              url={activeModelUrl}
-              position={[0, 0.2, 0.6]}
-              scale={1}
-            />
+            <React.Suspense fallback={null}>
+              <ModelLoader
+                url={activeModelUrl}
+                position={[0, 0.2, 0.6]}
+                scale={1}
+              />
+            </React.Suspense>
           </ThreeErrorBoundary>
         )}
 
