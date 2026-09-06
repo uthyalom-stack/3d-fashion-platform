@@ -6,11 +6,23 @@ export interface DisposalOptions {
   disposeTextures?: boolean;
 }
 
+export interface MaterialDisposalOptions {
+  disposeTextures?: boolean;
+}
+
 /**
- * Safely disposes a material and optionally its associated textures.
+ * Safely disposes a material (or array of materials) and optionally its associated textures.
  */
-function disposeMaterial(material: Material, options: DisposalOptions) {
-  if (!options.disposeMaterials && !options.disposeTextures) return;
+export function disposeMaterial(
+  material: Material | Material[] | null | undefined,
+  options: MaterialDisposalOptions = { disposeTextures: false }
+): void {
+  if (!material) return;
+
+  if (Array.isArray(material)) {
+    material.forEach((mat) => disposeMaterial(mat, options));
+    return;
+  }
 
   if (options.disposeTextures) {
     const matAny = material as unknown as Record<string, unknown>;
@@ -22,9 +34,7 @@ function disposeMaterial(material: Material, options: DisposalOptions) {
     }
   }
 
-  if (options.disposeMaterials) {
-    material.dispose();
-  }
+  material.dispose();
 }
 
 /**
@@ -38,7 +48,8 @@ function disposeMaterial(material: Material, options: DisposalOptions) {
  *
  * 2. Instance-Owned Resources (`deepCloneMaterials: true` or custom meshes):
  *    - When an instance explicitly clones materials (`mesh.material = mesh.material.clone()`), those materials are owned by that instance.
- *    - Calling `dispose3DObject(object, { disposeGeometries: false, disposeMaterials: true, disposeTextures: false })` disposes instance-owned materials without corrupting shared geometry or texture caches.
+ *    - Calling `disposeMaterial(clonedMaterials)` or `dispose3DObject(object, { disposeGeometries: false, disposeMaterials: true, disposeTextures: false })`
+ *      disposes instance-owned materials without corrupting shared geometry or texture caches.
  */
 export function dispose3DObject(
   object: Object3D | null | undefined,
@@ -58,12 +69,8 @@ export function dispose3DObject(
         (mesh.geometry as BufferGeometry).dispose();
       }
 
-      if (mesh.material) {
-        if (Array.isArray(mesh.material)) {
-          mesh.material.forEach((mat) => disposeMaterial(mat, options));
-        } else {
-          disposeMaterial(mesh.material, options);
-        }
+      if (options.disposeMaterials && mesh.material) {
+        disposeMaterial(mesh.material, { disposeTextures: options.disposeTextures });
       }
     }
   });

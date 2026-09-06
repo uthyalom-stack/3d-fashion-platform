@@ -3,7 +3,7 @@
 import React, { useMemo, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { Object3D, Mesh, Material } from 'three';
-import { dispose3DObject } from '@/lib/3d/disposal';
+import { disposeMaterial } from '@/lib/3d/disposal';
 
 export interface ModelLoaderProps {
   url: string;
@@ -30,8 +30,8 @@ export interface ModelLoaderProps {
  *   has an isolated Object3D transform tree and cannot mutate the cached scene graph.
  * - Geometries & Base Materials: Owned by the Drei `useGLTF` cache and are NEVER disposed when an instance unmounts.
  * - Instance Materials (`deepCloneMaterials = true`): Managed within a Strict Mode-safe `useEffect` lifecycle.
- *   Cloned materials are created on setup and disposed on cleanup, while original cached material references
- *   are stored in `mesh.userData` and restored prior to disposal so Strict Mode remounts remain valid.
+ *   Cloned materials are created on setup and disposed on cleanup via `disposeMaterial()`, while original cached
+ *   material references are stored in `mesh.userData` and restored prior to disposal so Strict Mode remounts remain valid.
  * - Textures: Owned by `useGLTF` cache and never disposed by individual component instances.
  * - Error Handling: Delegated cleanly to React Suspense and surrounding ThreeErrorBoundary.
  */
@@ -113,11 +113,8 @@ export function ModelLoader({
         }
       });
 
-      // Dispose instance-owned cloned materials safely
-      createdInstanceMaterials.forEach((mat) => {
-        dispose3DObject(undefined, { disposeGeometries: false, disposeMaterials: false });
-        mat.dispose();
-      });
+      // Dispose instance-owned cloned materials safely via disposal utility helper
+      disposeMaterial(createdInstanceMaterials);
     };
   }, [modelScene, deepCloneMaterials]);
 
