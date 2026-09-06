@@ -6,23 +6,24 @@ import { AvatarProps, AvatarId, AvatarConfig } from '@/types/3d';
 
 /**
  * Avatar Registry Configuration
- * Maps avatar identifiers to runtime GLB asset paths and scale normalizations.
+ * Maps adult avatar identifiers to runtime GLB assets exported from the MakeHuman / MPFB2 ecosystem
+ * with normalized scale factors for consistent real-world human proportions (~1.73m - 1.75m height).
  */
 export const AVATAR_REGISTRY: Record<AvatarId, AvatarConfig> = {
   male: {
     id: 'male',
-    name: 'Male Base Avatar',
+    name: 'Adult Male Avatar',
     modelUrl: '/models/avatar/male/base-avatar.glb',
-    scale: 1.18, // Scales native 1.45m model to standard ~1.71m fashion avatar height
+    scale: 0.11, // Normalizes MakeHuman decimeter model (15.91 dm) to 1.75m adult human height
     positionOffset: [0, 0, 0],
     rotationOffset: [0, 0, 0],
     gender: 'male',
   },
   female: {
     id: 'female',
-    name: 'Female Base Avatar',
+    name: 'Adult Female Avatar',
     modelUrl: '/models/avatar/female/base-avatar.glb',
-    scale: 1.0, // Native 1.72m height
+    scale: 0.10, // Normalizes MakeHuman decimeter model (17.29 dm) to 1.73m adult human height
     positionOffset: [0, 0, 0],
     rotationOffset: [0, 0, 0],
     gender: 'female',
@@ -33,8 +34,8 @@ export const DEFAULT_AVATAR_ID: AvatarId = 'male';
 
 /**
  * Reusable Base Avatar Component
- * Serves as the primary 3D mannequin / base character foundation for fashion visualization.
- * Supports clean selection between registered base avatars (e.g. 'male' | 'female').
+ * Serves as the primary 3D adult human foundation for fashion visualization.
+ * Encapsulates MakeHuman / MPFB2 assets and attachment group containers.
  *
  * ARCHITECTURE & FLOW:
  * Scene -> Avatar (resolves avatarId) -> ModelLoader -> useGLTF -> GLB
@@ -51,7 +52,7 @@ export function Avatar({
   deepCloneMaterials = false,
   onLoad,
 }: AvatarProps) {
-  // Resolve configuration from registry (fallback to DEFAULT_AVATAR_ID if unrecognized)
+  // Resolve configuration from registry
   const config = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY[DEFAULT_AVATAR_ID];
 
   const resolvedUrl = modelUrl || config.modelUrl;

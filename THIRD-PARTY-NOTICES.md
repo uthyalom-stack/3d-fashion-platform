@@ -19,14 +19,13 @@ This project relies on open-source software libraries and license-safe 3D assets
 
 | Asset Name | Path | License | Origin / Author |
 | :--- | :--- | :--- | :--- |
-| Male Base Avatar (`RiggedFigure`) | `public/models/avatar/male/base-avatar.glb` | CC-BY 4.0 | Donated by Cesium to Khronos Group glTF Sample Models repository |
-| Female Base Avatar (`Michelle`) | `public/models/avatar/female/base-avatar.glb` | MIT | Three.js Examples Repository (`mrdoob/three.js`) |
+| Adult Male Base Avatar | `public/models/avatar/male/base-avatar.glb` | CC0 1.0 (Public Domain) | MakeHuman / MPFB2 Ecosystem (`makehumancommunity`) |
+| Adult Female Base Avatar | `public/models/avatar/female/base-avatar.glb` | CC0 1.0 (Public Domain) | MakeHuman / MPFB2 Ecosystem (`makehumancommunity`) |
 | `test-cube.glb` | `public/models/test-cube.glb` | MIT / Public Domain | Procedurally generated open-source dev test GLB asset |
 
 ## License Compliance Considerations
 
-1. **Permissive Licensing:** All runtime dependencies, devDependencies, and 3D assets use highly permissive open-source licenses (MIT, Apache-2.0, CC-BY 4.0).
+1. **Permissive Licensing:** All runtime dependencies, devDependencies, and 3D assets use highly permissive open-source licenses (MIT, Apache-2.0, CC0 1.0).
 2. **Zero Commercial Lock-in:** No proprietary 3D engine SDKs, paid cloud services, or restrictive copyleft dependencies (e.g. GPL-3.0) are present in the repository.
 3. **Open 3D Asset Provenance:**
-   - Male Avatar (`RiggedFigure`): CC-BY 4.0 (Donated by Cesium to Khronos Group).
-   - Female Avatar (`Michelle`): MIT License (Three.js repository).
+   - Both Adult Male and Adult Female avatars are generated and exported directly from the open-source MakeHuman / MPFB2 ecosystem under CC0 1.0 Universal Public Domain Dedication.
