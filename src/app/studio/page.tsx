@@ -2,10 +2,11 @@
 import React, { useRef, useState } from 'react';
 import Link from 'next/link';
 import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
-import { CameraControlsRef } from '@/types/3d';
+import { CameraControlsRef, AvatarId } from '@/types/3d';
 
 export default function StudioPage() {
   const controlsRef = useRef<CameraControlsRef>(null);
+  const [avatarId, setAvatarId] = useState<AvatarId>('male');
   const [showGrid, setShowGrid] = useState(true);
   const [activeModelUrl, setActiveModelUrl] = useState<string | null>(null);
 
@@ -58,7 +59,51 @@ export default function StudioPage() {
         </div>
 
         {/* Action Controls Header Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Avatar Selector Toggle */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: '#e8e8ed',
+            borderRadius: '6px',
+            padding: '2px'
+          }}>
+            <button
+              onClick={() => setAvatarId('male')}
+              style={{
+                padding: '0.35rem 0.75rem',
+                fontSize: '0.825rem',
+                fontWeight: avatarId === 'male' ? 600 : 500,
+                backgroundColor: avatarId === 'male' ? '#ffffff' : 'transparent',
+                color: avatarId === 'male' ? '#1d1d1f' : '#6e6e73',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                boxShadow: avatarId === 'male' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Male
+            </button>
+            <button
+              onClick={() => setAvatarId('female')}
+              style={{
+                padding: '0.35rem 0.75rem',
+                fontSize: '0.825rem',
+                fontWeight: avatarId === 'female' ? 600 : 500,
+                backgroundColor: avatarId === 'female' ? '#ffffff' : 'transparent',
+                color: avatarId === 'female' ? '#1d1d1f' : '#6e6e73',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                boxShadow: avatarId === 'female' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Female
+            </button>
+          </div>
+
           <button
             onClick={handleToggleTestModel}
             style={{
@@ -113,6 +158,7 @@ export default function StudioPage() {
       <main style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
         <ViewerCanvas
           ref={controlsRef}
+          avatarId={avatarId}
           showGrid={showGrid}
           activeModelUrl={activeModelUrl}
         />
@@ -132,6 +178,7 @@ export default function StudioPage() {
           pointerEvents: 'none',
           boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
         }}>
+          <div><strong>Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}</div>
           <div><strong>Drag / Touch:</strong> Rotate Camera</div>
           <div><strong>Scroll / Pinch:</strong> Zoom</div>
           {activeModelUrl && (

@@ -21,6 +21,26 @@ export interface SceneConfig {
 }
 
 /**
+ * Supported avatar identifiers for Phase 2 multi-avatar support.
+ * Designed to cleanly extend in future phases (e.g. 'boy', 'girl', body variants).
+ */
+export type AvatarId = 'male' | 'female';
+
+/**
+ * Avatar Registry Configuration Contract
+ * Maps an avatar identifier to its runtime asset URL and normalized transforms.
+ */
+export interface AvatarConfig {
+  id: AvatarId;
+  name: string;
+  modelUrl: string;
+  scale: [number, number, number] | number;
+  positionOffset: [number, number, number];
+  rotationOffset: [number, number, number];
+  gender: 'male' | 'female' | 'unisex';
+}
+
+/**
  * Interface boundary for future garment/clothing system.
  * Allows future garment layers to attach to avatar slots without refactoring the viewer.
  */
@@ -33,7 +53,7 @@ export interface GarmentSlot {
 }
 
 /**
- * Standard skeletal joint reference points available on the base avatar model.
+ * Standard skeletal joint reference points available on base avatar models.
  * Used for future attachment alignment without requiring hardcoded magic strings.
  */
 export type AvatarJointName =
@@ -55,12 +75,14 @@ export type AvatarJointName =
   | 'leg_joint_R_1'
   | 'leg_joint_R_2'
   | 'leg_joint_R_3'
-  | 'leg_joint_R_5';
+  | 'leg_joint_R_5'
+  | string;
 
 /**
  * Props for the reusable Avatar component.
  */
 export interface AvatarProps {
+  avatarId?: AvatarId;
   modelUrl?: string;
   position?: [number, number, number];
   rotation?: [number, number, number];
@@ -88,6 +110,7 @@ export interface AssetMetadata {
 }
 
 export interface AvatarMetadata extends AssetMetadata {
+  avatarId?: AvatarId;
   heightMeters?: number;
   neutralPose?: string;
   skeletonType?: string;

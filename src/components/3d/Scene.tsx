@@ -7,15 +7,16 @@ import { AvatarPlaceholder } from './AvatarPlaceholder';
 import { ModelLoader } from './ModelLoader';
 import { ThreeErrorBoundary } from './ThreeErrorBoundary';
 import { Controls } from './CameraControls';
-import { CameraControlsRef } from '@/types/3d';
+import { CameraControlsRef, AvatarId } from '@/types/3d';
 
 export interface SceneProps {
+  avatarId?: AvatarId;
   showGrid?: boolean;
   activeModelUrl?: string | null;
 }
 
 export const Scene = forwardRef<CameraControlsRef, SceneProps>(
-  ({ showGrid = true, activeModelUrl = null }, ref) => {
+  ({ avatarId = 'male', showGrid = true, activeModelUrl = null }, ref) => {
     return (
       <>
         {/* Background color */}
@@ -29,7 +30,7 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
           fallback={<AvatarPlaceholder position={[0, 0, 0]} />}
         >
           <React.Suspense fallback={<AvatarPlaceholder position={[0, 0, 0]} />}>
-            <Avatar position={[0, 0, 0]} />
+            <Avatar avatarId={avatarId} position={[0, 0, 0]} />
           </React.Suspense>
         </ThreeErrorBoundary>
 

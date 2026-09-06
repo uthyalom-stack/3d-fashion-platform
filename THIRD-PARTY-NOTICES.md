@@ -1,6 +1,8 @@
 # Third-Party Notices and License Information
 
-This project relies on open-source software libraries. Below is a summary of the primary third-party dependencies used in Phase 0 and their respective licenses:
+This project relies on open-source software libraries and license-safe 3D assets. Below is a summary of the primary third-party dependencies and media assets used in the project:
+
+## Software Dependencies
 
 | Package | Version | License | Description / Purpose |
 | :--- | :--- | :--- | :--- |
@@ -13,8 +15,18 @@ This project relies on open-source software libraries. Below is a summary of the
 | `typescript` | 5.x | Apache-2.0 | Type System and Compiler |
 | `eslint` | 9.x | MIT | Code Quality and Linter |
 
+## 3D Models & Media Assets
+
+| Asset Name | Path | License | Origin / Author |
+| :--- | :--- | :--- | :--- |
+| Male Base Avatar (`RiggedFigure`) | `public/models/avatar/male/base-avatar.glb` | CC-BY 4.0 | Donated by Cesium to Khronos Group glTF Sample Models repository |
+| Female Base Avatar (`Michelle`) | `public/models/avatar/female/base-avatar.glb` | MIT | Three.js Examples Repository (`mrdoob/three.js`) |
+| `test-cube.glb` | `public/models/test-cube.glb` | MIT / Public Domain | Procedurally generated open-source dev test GLB asset |
+
 ## License Compliance Considerations
 
-1. **Permissive Licensing:** All runtime dependencies and core devDependencies use highly permissive open-source licenses (MIT or Apache-2.0).
+1. **Permissive Licensing:** All runtime dependencies, devDependencies, and 3D assets use highly permissive open-source licenses (MIT, Apache-2.0, CC-BY 4.0).
 2. **Zero Commercial Lock-in:** No proprietary 3D engine SDKs, paid cloud services, or restrictive copyleft dependencies (e.g. GPL-3.0) are present in the repository.
-3. **No External Asset Licenses:** The Phase 0 placeholder avatar is procedurally constructed using Three.js geometric primitives, ensuring zero copyright or model licensing obligations.
+3. **Open 3D Asset Provenance:**
+   - Male Avatar (`RiggedFigure`): CC-BY 4.0 (Donated by Cesium to Khronos Group).
+   - Female Avatar (`Michelle`): MIT License (Three.js repository).
