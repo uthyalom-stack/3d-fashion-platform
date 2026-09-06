@@ -7,11 +7,16 @@ import { CameraControlsRef } from '@/types/3d';
 export default function StudioPage() {
   const controlsRef = useRef<CameraControlsRef>(null);
   const [showGrid, setShowGrid] = useState(true);
+  const [activeModelUrl, setActiveModelUrl] = useState<string | null>(null);
 
   const handleResetCamera = () => {
     if (controlsRef.current) {
       controlsRef.current.resetCamera();
     }
+  };
+
+  const handleToggleTestModel = () => {
+    setActiveModelUrl((prev) => (prev ? null : '/models/test-cube.glb'));
   };
 
   return (
@@ -55,6 +60,22 @@ export default function StudioPage() {
         {/* Action Controls Header Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <button
+            onClick={handleToggleTestModel}
+            style={{
+              padding: '0.4rem 0.8rem',
+              fontSize: '0.825rem',
+              fontWeight: 500,
+              backgroundColor: activeModelUrl ? '#e3f2fd' : '#f2f2f7',
+              color: activeModelUrl ? '#0071e3' : '#1d1d1f',
+              border: activeModelUrl ? '1px solid #0071e3' : '1px solid #d1d1d6',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            {activeModelUrl ? 'Unload Test Model' : 'Load Test Asset'}
+          </button>
+
+          <button
             onClick={() => setShowGrid((prev) => !prev)}
             style={{
               padding: '0.4rem 0.8rem',
@@ -90,7 +111,11 @@ export default function StudioPage() {
 
       {/* Main Studio Viewport */}
       <main style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
-        <ViewerCanvas ref={controlsRef} showGrid={showGrid} />
+        <ViewerCanvas
+          ref={controlsRef}
+          showGrid={showGrid}
+          activeModelUrl={activeModelUrl}
+        />
 
         {/* Viewport Overlay Controls/Info */}
         <div style={{
@@ -109,6 +134,11 @@ export default function StudioPage() {
         }}>
           <div><strong>Drag / Touch:</strong> Rotate Camera</div>
           <div><strong>Scroll / Pinch:</strong> Zoom</div>
+          {activeModelUrl && (
+            <div style={{ marginTop: '0.25rem', color: '#0071e3', fontWeight: 500 }}>
+              Test GLB Asset Loaded
+            </div>
+          )}
         </div>
       </main>
     </div>
