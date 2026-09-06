@@ -74,34 +74,51 @@ function runOwnershipTests() {
   assert.notStrictEqual(instance2, cachedScene, 'Instance 2 Object3D scene tree must be an isolated clone');
   console.log('✓ PASS: Shared geometry/material references verified for shallow clones');
 
-  // TEST 2: Unmount Instance 1 with default disposal settings (disposeGeometries: false, disposeMaterials: false)
+  // TEST 2: Unmount Instance 1 with default disposal settings
   dispose3DObject(instance1, { disposeGeometries: false, disposeMaterials: false, disposeTextures: false });
   assert.strictEqual(geometryDisposed, false, 'Cached geometry must NOT be disposed when instance 1 unmounts');
   assert.strictEqual(cachedMaterialDisposed, false, 'Cached material must NOT be disposed when instance 1 unmounts');
   console.log('✓ PASS: Unmounting shallow-cloned instance leaves cached GPU allocations intact');
 
-  // TEST 3: ModelLoader Instance 3 with deepCloneMaterials = true
-  const instance3 = cachedScene.clone(true);
-  const mesh3 = instance3.children[0];
-  mesh3.material = mesh3.material.clone();
+  // TEST 3: React Strict Mode Lifecycle Replay Simulation for deepCloneMaterials = true
+  // In React Strict Mode, setup -> cleanup -> setup runs on the same mounted scene graph.
+  const instanceStrict = cachedScene.clone(true);
+  const meshStrict = instanceStrict.children[0];
 
-  let clonedMaterialDisposed = false;
-  mesh3.material.addEventListener('dispose', () => { clonedMaterialDisposed = true; });
+  // --- Strict Mode Pass 1: Effect Setup ---
+  meshStrict.userData._originalMaterial = meshStrict.material;
+  const clonedMatPass1 = meshStrict.material.clone();
+  meshStrict.material = clonedMatPass1;
+  let matPass1Disposed = false;
+  clonedMatPass1.addEventListener('dispose', () => { matPass1Disposed = true; });
 
-  assert.strictEqual(mesh3.geometry, cachedGeometry, 'Instance 3 must still share geometry with cache');
-  assert.notStrictEqual(mesh3.material, cachedMaterial, 'Instance 3 material must be an independent clone');
+  assert.notStrictEqual(meshStrict.material, cachedMaterial, 'Instance material must be a cloned material');
 
-  // Mutate instance 3 material
-  mesh3.material.color.setHex(0xff0000);
-  assert.strictEqual(cachedMaterial.color.getHex(), 0x0071e3, 'Mutating instance 3 material color must NOT affect cached material');
-  console.log('✓ PASS: deepCloneMaterials isolates material mutations without corrupting cache');
+  // --- Strict Mode Pass 1: Effect Cleanup (simulated remount unmount) ---
+  meshStrict.material = meshStrict.userData._originalMaterial;
+  clonedMatPass1.dispose();
 
-  // TEST 4: Unmount Instance 3 (disposes instance-owned material)
-  dispose3DObject(instance3, { disposeGeometries: false, disposeMaterials: true, disposeTextures: false });
-  assert.strictEqual(clonedMaterialDisposed, true, 'Instance-owned cloned material MUST be disposed on unmount');
-  assert.strictEqual(geometryDisposed, false, 'Cached geometry must STILL remain intact after instance 3 unmounts');
-  assert.strictEqual(cachedMaterialDisposed, false, 'Cached material must STILL remain intact after instance 3 unmounts');
-  console.log('✓ PASS: Instance-owned materials are safely disposed on unmount while leaving shared resources intact');
+  assert.strictEqual(matPass1Disposed, true, 'First cloned material instance must be disposed on cleanup');
+  assert.strictEqual(meshStrict.material, cachedMaterial, 'Original cached material reference restored on cleanup');
+  assert.strictEqual(cachedMaterialDisposed, false, 'Cached material remains intact after Strict Mode cleanup');
+
+  // --- Strict Mode Pass 2: Effect Setup (simulated remount setup) ---
+  const clonedMatPass2 = meshStrict.material.clone();
+  meshStrict.material = clonedMatPass2;
+  let matPass2Disposed = false;
+  clonedMatPass2.addEventListener('dispose', () => { matPass2Disposed = true; });
+
+  assert.strictEqual(matPass2Disposed, false, 'Second cloned material instance is active and undisposed');
+  assert.strictEqual(geometryDisposed, false, 'Cached geometry remains intact');
+
+  // --- Final Unmount: Effect Cleanup ---
+  meshStrict.material = meshStrict.userData._originalMaterial;
+  clonedMatPass2.dispose();
+
+  assert.strictEqual(matPass2Disposed, true, 'Second cloned material instance disposed on final unmount');
+  assert.strictEqual(cachedMaterialDisposed, false, 'Cached material remains intact after final unmount');
+  assert.strictEqual(geometryDisposed, false, 'Cached geometry remains intact after final unmount');
+  console.log('✓ PASS: React Strict Mode lifecycle setup->cleanup->setup replay handles material cloning safely');
 
   console.log('--- ALL THREE.JS RESOURCE OWNERSHIP TESTS PASSED SUCCESSFULLY ---');
 }

@@ -71,7 +71,7 @@ src/
 Each 3D concern is independently replaceable and follows strict resource ownership principles:
 - **`useGLTF` Cache Ownership:** The `@react-three/drei` loader cache retains primary ownership of loaded `BufferGeometry`, base `Material`, and `Texture` GPU allocations.
 - **`ModelLoader` Scene Isolation:** `ModelLoader` always clones the Object3D scene hierarchy (`gltf.scene.clone(true)`), giving every component instance an isolated transform tree.
-- **Instance Material Ownership (`deepCloneMaterials`):** When `deepCloneMaterials` is enabled, `ModelLoader` creates instance-owned material clones so material edits do not mutate the shared cache. Upon unmounting, `dispose3DObject` cleans up instance-owned materials (`disposeMaterials: true`) while leaving shared geometries and textures untouched (`disposeGeometries: false`).
+- **Instance Material Ownership (`deepCloneMaterials`):** When `deepCloneMaterials` is enabled, `ModelLoader` creates instance-owned material clones so material edits do not mutate the shared cache. Upon unmounting, `dispose3DObject` cleans up instance-owned materials (`disposeMaterials: true`) while leaving shared geometries and textures untouched (`disposeGeometries: false`). React Strict Mode effect replays are handled safely by storing original material references in `userData` and restoring them prior to disposal.
 - **`ViewerCanvas`:** Wraps WebGL detection and dynamic Canvas initialization.
 - **`AvatarPlaceholder`:** Renders the base mannequin and accepts `garmentSlots` interface props, allowing future GLB garment models to attach without changing page structure.
 - **`CameraControls`:** Exposes an imperative `resetCamera` handle to parent controls.
@@ -132,9 +132,9 @@ npm start
 
 To keep the codebase lean and modular, the following systems are intentionally deferred to future phases:
 - Real production garment systems / product catalogs
-- Databases / Prisma ORM
+- Databases / ORM
 - User Authentication & Account management
-- Billing / Subscriptions / E-commerce cart & checkout
+- Monetization / Payment / Commerce systems
 - External APIs or Cloud Storage (AWS S3, Cloudflare R2)
 - Multi-tenancy / Admin dashboards
 - AI pipelines / Automatic garment generation
