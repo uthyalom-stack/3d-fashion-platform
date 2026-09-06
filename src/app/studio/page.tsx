@@ -33,14 +33,18 @@ export default function StudioPage() {
       {/* Top Header */}
       <header style={{
         display: 'flex',
+        flexWrap: 'wrap',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '0.75rem 1.25rem',
+        gap: '0.5rem 1rem',
+        padding: '0.6rem 1rem',
         backgroundColor: '#ffffff',
         borderBottom: '1px solid #e5e5ea',
-        zIndex: 10
+        zIndex: 10,
+        boxSizing: 'border-box',
+        maxHeight: 'none'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <Link
             href="/"
             style={{
@@ -59,7 +63,12 @@ export default function StudioPage() {
         </div>
 
         {/* Action Controls Header Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '0.5rem 0.75rem'
+        }}>
           {/* Avatar Selector Toggle */}
           <div style={{
             display: 'flex',
@@ -70,6 +79,7 @@ export default function StudioPage() {
           }}>
             <button
               onClick={() => setAvatarId('male')}
+              aria-pressed={avatarId === 'male'}
               style={{
                 padding: '0.35rem 0.75rem',
                 fontSize: '0.825rem',
@@ -87,6 +97,7 @@ export default function StudioPage() {
             </button>
             <button
               onClick={() => setAvatarId('female')}
+              aria-pressed={avatarId === 'female'}
               style={{
                 padding: '0.35rem 0.75rem',
                 fontSize: '0.825rem',
@@ -107,7 +118,7 @@ export default function StudioPage() {
           <button
             onClick={handleToggleTestModel}
             style={{
-              padding: '0.4rem 0.8rem',
+              padding: '0.4rem 0.75rem',
               fontSize: '0.825rem',
               fontWeight: 500,
               backgroundColor: activeModelUrl ? '#e3f2fd' : '#f2f2f7',
@@ -123,7 +134,7 @@ export default function StudioPage() {
           <button
             onClick={() => setShowGrid((prev) => !prev)}
             style={{
-              padding: '0.4rem 0.8rem',
+              padding: '0.4rem 0.75rem',
               fontSize: '0.825rem',
               fontWeight: 500,
               backgroundColor: showGrid ? '#e8e8ed' : '#f2f2f7',
@@ -139,7 +150,7 @@ export default function StudioPage() {
           <button
             onClick={handleResetCamera}
             style={{
-              padding: '0.4rem 0.8rem',
+              padding: '0.4rem 0.75rem',
               fontSize: '0.825rem',
               fontWeight: 500,
               backgroundColor: '#0071e3',

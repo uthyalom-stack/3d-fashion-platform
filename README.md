@@ -7,35 +7,38 @@ A clean, lightweight, open-source-first web foundation for a standalone 3D fashi
 This project establishes the 3D runtime and avatar foundation for the **3D Fashion Platform**.
 - **Phase 0:** High-performance 3D scene engine, dynamic camera controls, studio three-point lighting, and procedural mannequin avatar placeholder.
 - **Phase 1:** Reusable GLB/glTF model loading infrastructure, generic 3D asset contracts, and safe Three.js memory disposal lifecycle management.
-- **Phase 2:** Base Avatar Foundation — Replaces the procedural mannequin placeholder with a real, license-safe open-source base avatar system supporting dual adult base avatars (`male` and `female`). Both models are encapsulated in a unified, reusable `<Avatar />` component driven by `AVATAR_REGISTRY` configuration and backed by skeletal joint contracts ready for future garment attachments.
+- **Phase 2:** Base Avatar Foundation — Replaces the procedural mannequin placeholder with a real, license-safe open-source base avatar system supporting dual adult base avatars (`male` and `female`). Both models are generated from the **MakeHuman / MPFB2** ecosystem under **CC0 1.0 Universal Public Domain Dedication**, encapsulated in a unified, reusable `<Avatar />` component driven by `AVATAR_REGISTRY` configuration, and backed by a 53-joint humanoid skeletal structure ready for future garment attachments.
 
 ## Base Avatar Specifications & Licenses
 
 ### 1. Male Base Avatar (`male`)
 - **Asset Identifier**: `male`
 - **Asset Location**: `public/models/avatar/male/base-avatar.glb`
-- **Asset Name**: RiggedFigure
-- **Original Source**: Khronos Group glTF Sample Models (`KhronosGroup/glTF-Sample-Models`)
-- **Donor / Author**: Donated by [Cesium](https://cesium.com/) for glTF testing and open 3D standard compliance.
-- **License**: Creative Commons Attribution 4.0 International (CC-BY 4.0)
-- **Attribution Notice**: "RiggedFigure 3D Model donated by Cesium to the Khronos Group glTF Sample Models repository, licensed under Creative Commons Attribution 4.0 International (CC-BY 4.0)."
-- **Scale Normalization**: Native GLB height is ~1.45m. Normalized in avatar registry with scale factor `1.18` to achieve standard ~1.71m fashion avatar height.
+- **Source Ecosystem**: MakeHuman / MPFB2 (`makehumancommunity`)
+- **Generator Tools**: Blender 4.0.2 with `mpfb2` addon
+- **Exact File Size**: 933,328 bytes (911.45 KB)
+- **Armature / Joint Count**: 53 skinned humanoid joints
+- **License**: CC0 1.0 Universal (Public Domain Dedication)
+- **License URL**: [https://creativecommons.org/publicdomain/zero/1.0/](https://creativecommons.org/publicdomain/zero/1.0/)
+- **Scale Normalization**: Native height ~15.91 decimeters. Normalized in avatar registry with scale factor `0.11` to achieve standard ~1.75m adult human fashion avatar height.
 
 ### 2. Female Base Avatar (`female`)
 - **Asset Identifier**: `female`
 - **Asset Location**: `public/models/avatar/female/base-avatar.glb`
-- **Asset Name**: Michelle
-- **Original Source**: Three.js Examples Repository (`mrdoob/three.js/examples/models/gltf/Michelle.glb`)
-- **License**: MIT License (Three.js Repository)
-- **Attribution Notice**: "Michelle 3D Model from Three.js Examples repository, licensed under MIT License."
-- **Scale Normalization**: Native height ~1.72m. Normalized in avatar registry with scale factor `1.0`.
+- **Source Ecosystem**: MakeHuman / MPFB2 (`makehumancommunity`)
+- **Generator Tools**: Blender 4.0.2 with `mpfb2` addon
+- **Exact File Size**: 932,920 bytes (911.05 KB)
+- **Armature / Joint Count**: 53 skinned humanoid joints
+- **License**: CC0 1.0 Universal (Public Domain Dedication)
+- **License URL**: [https://creativecommons.org/publicdomain/zero/1.0/](https://creativecommons.org/publicdomain/zero/1.0/)
+- **Scale Normalization**: Native height ~17.29 decimeters. Normalized in avatar registry with scale factor `0.10` to achieve standard ~1.73m adult human fashion avatar height.
 
 ### Coordinate System & Alignment Assumptions
 
 - **Origin**: Centered on origin `[0, 0, 0]` at floor/ground level (contact point).
-- **Vertical Orientation**: `+Y` is UP, `+Z` is FORWARD.
-- **Pose**: Neutral rest pose (T-pose / A-pose) suitable as a fashion mannequin and base figure.
-- **Skeletal Joints**: Preserves joint hierarchies covering torso, waist, neck, head, shoulders, arms, hands, hips, legs, and feet.
+- **Vertical Orientation**: `+Y` is UP, `+Z` is FORWARD (facing camera at `[0, 1.0, 2.8]`).
+- **Pose**: Neutral standing rest A-pose suitable as a fashion mannequin and base figure.
+- **Skeletal Joints**: Preserves 53-joint hierarchy covering root, pelvis, spine_01..03, neck_01, head, clavicles, upper arms, lower arms, hands, fingers, thumbs, thighs, calves, feet, and ball joints.
 
 ## Technology Foundation & Stack
 
@@ -49,7 +52,7 @@ This project establishes the 3D runtime and avatar foundation for the **3D Fashi
 ## Free & Open-Source-First Dependency Principle
 
 This project adheres strictly to an open-source first philosophy:
-- Permissive open-source licenses (MIT/Apache-2.0 / CC-BY 4.0).
+- Permissive open-source licenses (MIT/Apache-2.0 / CC0 1.0 Universal).
 - Zero paid SaaS dependencies, proprietary visualization SDKs, or commercial 3D engine licenses.
 - Zero external network requests or paid asset APIs at runtime.
 
@@ -67,14 +70,14 @@ public/
 └── models/
     ├── avatar/
     │   ├── female/
-    │   │   └── base-avatar.glb # Real open-source runtime GLB female base avatar asset
+    │   │   └── base-avatar.glb # MakeHuman CC0 1.0 female base avatar asset (911 KB)
     │   ├── male/
-    │   │   └── base-avatar.glb # Real open-source runtime GLB male base avatar asset
-    │   └── README.md           # Avatar assets specs & license documentation
+    │   │   └── base-avatar.glb # MakeHuman CC0 1.0 male base avatar asset (911 KB)
+    │   └── README.md           # Avatar asset specs & license documentation
     └── test-cube.glb           # Procedurally generated open-source dev test GLB asset
 
 scripts/
-├── test-avatar.js      # Unit test verifying dual avatar GLB presence, formats & node structures
+├── test-avatar.js      # Unit test verifying dual avatar GLB presence, skinning, and 53-joint hierarchy
 └── test-ownership.js   # Unit test verifying Three.js resource lifecycle & ownership
 
 src/
