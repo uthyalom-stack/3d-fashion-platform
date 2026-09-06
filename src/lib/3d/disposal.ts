@@ -7,13 +7,12 @@ export interface DisposalOptions {
 }
 
 /**
- * Safely disposes a material and its associated textures.
+ * Safely disposes a material and optionally its associated textures.
  */
 function disposeMaterial(material: Material, options: DisposalOptions) {
   if (!options.disposeMaterials && !options.disposeTextures) return;
 
   if (options.disposeTextures) {
-    // Iterate over material properties to dispose textures safely
     const matAny = material as unknown as Record<string, unknown>;
     for (const key of Object.keys(matAny)) {
       const prop = matAny[key];
@@ -29,17 +28,26 @@ function disposeMaterial(material: Material, options: DisposalOptions) {
 }
 
 /**
- * Recursively traverses a Three.js Object3D hierarchy and disposes of resources
- * (geometries, materials, textures) to prevent WebGL memory leaks.
+ * Resource Disposal Utility
  *
- * Safe for cloned scenes when options are set appropriately.
+ * RESOURCE OWNERSHIP RULES:
+ * 1. Shared Resources (default for useGLTF / Drei cached models):
+ *    - Drei/useGLTF retains ownership of BufferGeometry, Material, and Texture instances.
+ *    - Object3D hierarchies cloned via `scene.clone(true)` share these underlying GPU resources.
+ *    - DO NOT call dispose3DObject with disposeGeometries=true or disposeMaterials=true on shallow-cloned
+ *      scenes, as doing so invalidates GPU resources in the useGLTF cache and breaks re-mounting/reuse.
+ *
+ * 2. Instance-Owned Resources (deeply cloned or manually instantiated objects):
+ *    - If an instance explicitly deep-clones its geometries/materials (e.g., `mesh.material = mesh.material.clone()`),
+ *      those cloned resources are owned by that instance and MUST be disposed when the instance unmounts.
+ *    - Use `dispose3DObject(object, { disposeGeometries: true, disposeMaterials: true })` ONLY for instance-owned objects.
  */
 export function dispose3DObject(
   object: Object3D | null | undefined,
   options: DisposalOptions = {
     disposeGeometries: true,
     disposeMaterials: true,
-    disposeTextures: true,
+    disposeTextures: false,
   }
 ): void {
   if (!object) return;
@@ -48,12 +56,10 @@ export function dispose3DObject(
     if ((child as Mesh).isMesh) {
       const mesh = child as Mesh;
 
-      // Dispose geometry
       if (options.disposeGeometries && mesh.geometry) {
         (mesh.geometry as BufferGeometry).dispose();
       }
 
-      // Dispose materials & textures
       if (mesh.material) {
         if (Array.isArray(mesh.material)) {
           mesh.material.forEach((mat) => disposeMaterial(mat, options));
