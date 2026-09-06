@@ -1,6 +1,6 @@
 /**
- * 3D Scene and Viewer Type Definitions
- * Phase 0 Foundation
+ * 3D Scene, Viewer, and Engine Asset Type Definitions
+ * Phase 1 Asset Foundation
  */
 
 export interface CameraConfig {
@@ -37,4 +37,35 @@ export interface AvatarProps {
   rotation?: [number, number, number];
   scale?: [number, number, number];
   garmentSlots?: GarmentSlot[];
+}
+
+/**
+ * Generic 3D Asset Definitions (Phase 1 Engine Infrastructure)
+ * Clean, generic model contract decoupled from commerce/product logic.
+ */
+export type AssetType = 'avatar' | 'garment' | 'accessory' | 'prop' | 'environment';
+
+export interface AssetMetadata {
+  scale?: [number, number, number];
+  positionOffset?: [number, number, number];
+  rotationOffset?: [number, number, number];
+  format?: 'glb' | 'gltf';
+  fileSizeBytes?: number;
+  [key: string]: unknown;
+}
+
+export interface Asset3D {
+  id: string;
+  url: string;
+  name: string;
+  type: AssetType;
+  metadata?: AssetMetadata;
+}
+
+export type AssetLoadStatus = 'idle' | 'loading' | 'loaded' | 'error';
+
+export interface AssetLoadState {
+  status: AssetLoadStatus;
+  progress: number; // 0 to 100
+  error: Error | null;
 }

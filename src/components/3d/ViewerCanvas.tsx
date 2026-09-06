@@ -10,6 +10,7 @@ import { CameraControlsRef } from '@/types/3d';
 export interface ViewerCanvasProps {
   className?: string;
   showGrid?: boolean;
+  activeModelUrl?: string | null;
 }
 
 function LoadingFallback() {
@@ -57,7 +58,7 @@ const getClientSnapshot = () => isWebGLAvailable();
 const getServerSnapshot = () => false;
 
 export const ViewerCanvas = forwardRef<CameraControlsRef, ViewerCanvasProps>(
-  ({ className = '', showGrid = true }, ref) => {
+  ({ className = '', showGrid = true, activeModelUrl = null }, ref) => {
     const isSupported = useSyncExternalStore(
       emptySubscribe,
       getClientSnapshot,
@@ -88,7 +89,7 @@ export const ViewerCanvas = forwardRef<CameraControlsRef, ViewerCanvasProps>(
               }}
               style={{ width: '100%', height: '100%' }}
             >
-              <Scene ref={ref} showGrid={showGrid} />
+              <Scene ref={ref} showGrid={showGrid} activeModelUrl={activeModelUrl} />
             </Canvas>
           </Suspense>
         </div>
