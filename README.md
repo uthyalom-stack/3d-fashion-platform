@@ -45,7 +45,7 @@ public/
     └── test-cube.glb   # Procedurally generated open-source dev test GLB asset
 
 scripts/
-└── test-ownership.js   # Unit test suite verifying Three.js resource lifecycle & ownership
+└── test-ownership.js   # Unit test verifying Three.js resource lifecycle & ownership
 
 src/
 ├── components/
