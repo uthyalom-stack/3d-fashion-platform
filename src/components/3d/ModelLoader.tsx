@@ -2,7 +2,8 @@
 
 import React, { useMemo, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
-import { Object3D, Mesh, Material } from 'three';
+import { Object3D, Mesh } from 'three';
+import { dispose3DObject } from '@/lib/3d/disposal';
 
 export interface ModelLoaderProps {
   url: string;
@@ -10,13 +11,9 @@ export interface ModelLoaderProps {
   rotation?: [number, number, number];
   scale?: [number, number, number] | number;
   /**
-   * If true (default), clones the Object3D scene hierarchy so this instance has an isolated transform tree.
-   * By default, underlying BufferGeometry and Material resources remain shared with the useGLTF cache.
-   */
-  clone?: boolean;
-  /**
-   * If true, creates instance-owned copies of materials so material edits (e.g. color, roughness) on this instance
-   * do not affect other instances or the useGLTF cache. When unmounted, instance-owned materials are disposed.
+   * If true, creates instance-owned copies of materials so material edits (e.g. color, roughness)
+   * on this instance do not affect other instances or the useGLTF cache.
+   * When unmounted, instance-owned materials are safely disposed.
    */
   deepCloneMaterials?: boolean;
   castShadow?: boolean;
@@ -26,19 +23,23 @@ export interface ModelLoaderProps {
 
 /**
  * Reusable GLB/glTF Model Loader Component
- * Leverages R3F useGLTF loader with clear resource ownership rules.
+ * Leverages R3F useGLTF loader with a single, unambiguous resource ownership model.
  *
- * RESOURCE OWNERSHIP:
- * - Geometries and base materials are owned by the Drei useGLTF cache and are NOT disposed when this component unmounts.
- * - If `deepCloneMaterials` is true, material clones created for this instance are owned by this component and disposed on unmount.
- * - Error handling is cleanly delegated to React Suspense and surrounding ThreeErrorBoundary.
+ * RESOURCE OWNERSHIP & LIFECYCLE:
+ * - Scene Hierarchy: ALWAYS cloned (`gltf.scene.clone(true)`) so every ModelLoader instance
+ *   has an isolated Object3D transform tree and cannot mutate the cached scene graph.
+ * - Geometries & Base Materials: Owned by the Drei `useGLTF` cache and are NEVER disposed when an instance unmounts.
+ * - Instance Materials (`deepCloneMaterials = true`): Owned by this ModelLoader instance and automatically
+ *   disposed via `dispose3DObject(modelScene, { disposeGeometries: false, disposeMaterials: true, disposeTextures: false })`
+ *   upon component unmount or URL change.
+ * - Textures: Owned by `useGLTF` cache and never disposed by individual component instances.
+ * - Error Handling: Delegated cleanly to React Suspense and surrounding ThreeErrorBoundary.
  */
 export function ModelLoader({
   url,
   position = [0, 0, 0],
   rotation = [0, 0, 0],
   scale = 1,
-  clone = true,
   deepCloneMaterials = false,
   castShadow = true,
   receiveShadow = true,
@@ -46,12 +47,11 @@ export function ModelLoader({
 }: ModelLoaderProps) {
   const gltf = useGLTF(url);
 
-  // Clone scene hierarchy and optionally deep-clone materials for instance isolation
-  const { modelScene, ownedMaterials } = useMemo(() => {
-    if (!gltf || !gltf.scene) return { modelScene: null, ownedMaterials: [] };
+  // Always clone the scene hierarchy to isolate Object3D transforms
+  const modelScene = useMemo(() => {
+    if (!gltf || !gltf.scene) return null;
 
-    const clonedScene = clone ? gltf.scene.clone(true) : gltf.scene;
-    const clonedMats: Material[] = [];
+    const clonedScene = gltf.scene.clone(true);
 
     clonedScene.traverse((child: Object3D) => {
       if ('isMesh' in child && child.isMesh) {
@@ -61,22 +61,16 @@ export function ModelLoader({
 
         if (deepCloneMaterials && mesh.material) {
           if (Array.isArray(mesh.material)) {
-            mesh.material = mesh.material.map((mat) => {
-              const mClone = mat.clone();
-              clonedMats.push(mClone);
-              return mClone;
-            });
+            mesh.material = mesh.material.map((mat) => mat.clone());
           } else {
-            const mClone = mesh.material.clone();
-            clonedMats.push(mClone);
-            mesh.material = mClone;
+            mesh.material = mesh.material.clone();
           }
         }
       }
     });
 
-    return { modelScene: clonedScene, ownedMaterials: clonedMats };
-  }, [gltf, clone, deepCloneMaterials, castShadow, receiveShadow]);
+    return clonedScene;
+  }, [gltf, deepCloneMaterials, castShadow, receiveShadow]);
 
   useEffect(() => {
     if (modelScene && onLoad) {
@@ -84,17 +78,19 @@ export function ModelLoader({
     }
   }, [modelScene, onLoad]);
 
-  // Clean up ONLY instance-owned resources on unmount
+  // Clean up instance-owned resources on unmount or modelScene update
   useEffect(() => {
     return () => {
-      // If we deep-cloned materials for this instance, dispose only those owned materials
-      if (ownedMaterials.length > 0) {
-        ownedMaterials.forEach((mat) => mat.dispose());
+      if (modelScene) {
+        // Only dispose materials if deepCloneMaterials was set (meaning the instance owns them)
+        dispose3DObject(modelScene, {
+          disposeGeometries: false,
+          disposeMaterials: deepCloneMaterials,
+          disposeTextures: false,
+        });
       }
-
-      // Do NOT call dispose3DObject with disposeGeometries/disposeMaterials on shared useGLTF cache resources.
     };
-  }, [ownedMaterials]);
+  }, [modelScene, deepCloneMaterials]);
 
   if (!modelScene) return null;
 

@@ -44,6 +44,9 @@ public/
 └── models/
     └── test-cube.glb   # Procedurally generated open-source dev test GLB asset
 
+scripts/
+└── test-ownership.js   # Unit test suite verifying Three.js resource lifecycle & ownership
+
 src/
 ├── components/
 │   └── 3d/
@@ -57,19 +60,21 @@ src/
 ├── lib/
 │   └── 3d/
 │       ├── constants.ts           # Camera defaults, limits, and scene configuration
-│       ├── disposal.ts            # Recursive Three.js geometry/material resource cleanup
+│       ├── disposal.ts            # Three.js geometry/material resource disposal rules
 │       └── webgl.ts               # WebGL browser support detector
 └── types/
     └── 3d.ts                      # TypeScript definitions & generic 3D asset interfaces
 ```
 
-### Architectural Decoupling & Lifecycle
-Each 3D concern is independently replaceable:
-- `ViewerCanvas` wraps WebGL detection and dynamic Canvas initialization.
-- `ModelLoader` encapsulates GLB model loading via `@react-three/drei`, provides object cloning for scene isolation, and automatically disposes of geometries and materials on unmount.
-- `dispose3DObject` recursively traverses Three.js Object3D hierarchies to free GPU memory without accidentally disposing shared cached resources.
-- `AvatarPlaceholder` renders the base mannequin and accepts `garmentSlots` interface props, allowing future GLB garment models to attach without changing page structure.
-- `CameraControls` exposes an imperative `resetCamera` handle to parent controls.
+### Architectural Decoupling & Resource Ownership Rules
+
+Each 3D concern is independently replaceable and follows strict resource ownership principles:
+- **`useGLTF` Cache Ownership:** The `@react-three/drei` loader cache retains primary ownership of loaded `BufferGeometry`, base `Material`, and `Texture` GPU allocations.
+- **`ModelLoader` Scene Isolation:** `ModelLoader` always clones the Object3D scene hierarchy (`gltf.scene.clone(true)`), giving every component instance an isolated transform tree.
+- **Instance Material Ownership (`deepCloneMaterials`):** When `deepCloneMaterials` is enabled, `ModelLoader` creates instance-owned material clones so material edits do not mutate the shared cache. Upon unmounting, `dispose3DObject` cleans up instance-owned materials (`disposeMaterials: true`) while leaving shared geometries and textures untouched (`disposeGeometries: false`).
+- **`ViewerCanvas`:** Wraps WebGL detection and dynamic Canvas initialization.
+- **`AvatarPlaceholder`:** Renders the base mannequin and accepts `garmentSlots` interface props, allowing future GLB garment models to attach without changing page structure.
+- **`CameraControls`:** Exposes an imperative `resetCamera` handle to parent controls.
 
 ## Getting Started
 
@@ -104,6 +109,11 @@ npx tsc --noEmit
 Run ESLint:
 ```bash
 npm run lint
+```
+
+Run Resource Ownership Tests:
+```bash
+node scripts/test-ownership.js
 ```
 
 ### Production Build

@@ -30,23 +30,21 @@ function disposeMaterial(material: Material, options: DisposalOptions) {
 /**
  * Resource Disposal Utility
  *
- * RESOURCE OWNERSHIP RULES:
- * 1. Shared Resources (default for useGLTF / Drei cached models):
- *    - Drei/useGLTF retains ownership of BufferGeometry, Material, and Texture instances.
- *    - Object3D hierarchies cloned via `scene.clone(true)` share these underlying GPU resources.
- *    - DO NOT call dispose3DObject with disposeGeometries=true or disposeMaterials=true on shallow-cloned
- *      scenes, as doing so invalidates GPU resources in the useGLTF cache and breaks re-mounting/reuse.
+ * RESOURCE OWNERSHIP RULES & LIFECYCLE CONTRACT:
+ * 1. Shared Resources (`useGLTF` / Drei cached models):
+ *    - Drei/`useGLTF` retains ownership of `BufferGeometry`, base `Material`, and `Texture` instances.
+ *    - ModelLoader always shallow-clones Object3D hierarchies (`scene.clone(true)`), sharing underlying GPU allocations.
+ *    - Callers MUST set `disposeGeometries: false` and `disposeTextures: false` for shallow-cloned models so cached GPU resources are preserved.
  *
- * 2. Instance-Owned Resources (deeply cloned or manually instantiated objects):
- *    - If an instance explicitly deep-clones its geometries/materials (e.g., `mesh.material = mesh.material.clone()`),
- *      those cloned resources are owned by that instance and MUST be disposed when the instance unmounts.
- *    - Use `dispose3DObject(object, { disposeGeometries: true, disposeMaterials: true })` ONLY for instance-owned objects.
+ * 2. Instance-Owned Resources (`deepCloneMaterials: true` or custom meshes):
+ *    - When an instance explicitly clones materials (`mesh.material = mesh.material.clone()`), those materials are owned by that instance.
+ *    - Calling `dispose3DObject(object, { disposeGeometries: false, disposeMaterials: true, disposeTextures: false })` disposes instance-owned materials without corrupting shared geometry or texture caches.
  */
 export function dispose3DObject(
   object: Object3D | null | undefined,
   options: DisposalOptions = {
-    disposeGeometries: true,
-    disposeMaterials: true,
+    disposeGeometries: false,
+    disposeMaterials: false,
     disposeTextures: false,
   }
 ): void {
