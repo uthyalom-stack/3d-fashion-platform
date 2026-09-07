@@ -9,16 +9,36 @@ import { Garment } from './Garment';
 import { ThreeErrorBoundary } from './ThreeErrorBoundary';
 import { Controls } from './CameraControls';
 import { CameraControlsRef, AvatarId } from '@/types/3d';
+import { OutfitState, CANONICAL_GARMENT_SLOTS } from '@/types/garment';
 
 export interface SceneProps {
   avatarId?: AvatarId;
   showGrid?: boolean;
   activeModelUrl?: string | null;
   activeGarmentId?: string | null;
+  outfitState?: OutfitState;
 }
 
 export const Scene = forwardRef<CameraControlsRef, SceneProps>(
-  ({ avatarId = 'male', showGrid = true, activeModelUrl = null, activeGarmentId = null }, ref) => {
+  (
+    {
+      avatarId = 'male',
+      showGrid = true,
+      activeModelUrl = null,
+      activeGarmentId = null,
+      outfitState,
+    },
+    ref
+  ) => {
+    // Resolve active garments per slot: prefer explicit outfitState, fallback to activeGarmentId as 'top'
+    const resolvedOutfitState: OutfitState = outfitState || {
+      top: activeGarmentId,
+      bottom: null,
+      feet: null,
+      waist: null,
+      hand: null,
+    };
+
     return (
       <>
         {/* Background color */}
@@ -36,14 +56,23 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
           </React.Suspense>
         </ThreeErrorBoundary>
 
-        {/* Active Garment Asset Layer (Phase 3 Garment Pipeline Foundation) */}
-        {activeGarmentId && (
-          <ThreeErrorBoundary fallback={null}>
-            <React.Suspense fallback={null}>
-              <Garment garmentId={activeGarmentId} avatarId={avatarId} />
-            </React.Suspense>
-          </ThreeErrorBoundary>
-        )}
+        {/* Active Garment Layers driven by Outfit State (Phase 4 Attachment System) */}
+        {CANONICAL_GARMENT_SLOTS.map((slot) => {
+          const garmentId = resolvedOutfitState[slot];
+          if (!garmentId) return null;
+
+          return (
+            <ThreeErrorBoundary key={`garment-slot-${slot}`} fallback={null}>
+              <React.Suspense fallback={null}>
+                <Garment
+                  key={`garment-render-${slot}-${garmentId}`}
+                  garmentId={garmentId}
+                  avatarId={avatarId}
+                />
+              </React.Suspense>
+            </ThreeErrorBoundary>
+          );
+        })}
 
         {/* Dynamic 3D Asset Loader (Phase 1 Engine Integration) */}
         {activeModelUrl && (

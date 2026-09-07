@@ -3,7 +3,7 @@
 import React from 'react';
 import { ModelLoader } from './ModelLoader';
 import { GARMENT_REGISTRY } from '@/lib/3d/garmentRegistry';
-import { AVATAR_REGISTRY } from './Avatar';
+import { resolveGarmentTransform } from '@/lib/3d/attachmentResolver';
 import { AvatarId } from '@/types/3d';
 
 export interface GarmentProps {
@@ -20,7 +20,7 @@ export interface GarmentProps {
 /**
  * Reusable Garment Component
  * Loads and displays a 3D garment asset aligned to the target base avatar.
- * Reuses the Phase 1 ModelLoader, ensuring proper Three.js resource disposal & ownership.
+ * Reuses the Phase 1 ModelLoader and attachment resolver for transform ownership.
  *
  * ARCHITECTURE:
  * Scene -> Garment -> ModelLoader -> useGLTF
@@ -52,19 +52,12 @@ export function Garment({
     return null;
   }
 
-  // Determine scale normalization
-  // Garments authored in MakeHuman decimeter coordinates scale via avatarConfig.scale.
-  // Garments authored in standard meter units specify config.scale (e.g. 1.0) or default to 1.0.
-  const avatarConfig = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY.male;
-  const targetScale = scale ?? config.scale ?? avatarConfig.scale;
+  // Centralized transform resolution (Transform Ownership)
+  const resolved = resolveGarmentTransform(config, avatarId);
 
-  const targetPosition: [number, number, number] = position
-    ? position
-    : config.positionOffset ?? avatarConfig.positionOffset;
-
-  const targetRotation: [number, number, number] = rotation
-    ? rotation
-    : config.rotationOffset ?? avatarConfig.rotationOffset;
+  const targetScale = scale ?? resolved.scale;
+  const targetPosition = position ?? resolved.position;
+  const targetRotation = rotation ?? resolved.rotation;
 
   return (
     <group name={`garment-root-${config.id}`} key={`${config.id}-${avatarId}`}>

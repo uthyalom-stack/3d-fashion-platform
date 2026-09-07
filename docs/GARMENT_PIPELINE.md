@@ -78,10 +78,10 @@ All garments in the repository must have explicit, auditable provenance and lice
 
 ## 6. Deformation Strategy
 
-For Phase 3, the platform uses a **pre-authored static/rigged garment strategy**:
+For Phase 3 & Phase 4, the platform uses a **pre-authored static/rigged garment strategy**:
 * Garments are authored specifically against the canonical base avatar proportions in neutral A-Pose.
 * Real-time browser cloth physics, procedural fitting, or body-shape morphing are strictly out of scope.
-* If rigging/skinning is required, the garment armature MUST bind to the canonical avatar bone hierarchy (`root`, `pelvis`, `spine_01`, `chest`, `clavicle_l`, `upperarm_l`, etc.).
+* If rigging/skinning is required, the garment armature MUST bind to the canonical avatar bone hierarchy (`Root`, `pelvis`, `spine_01`, `spine_02`, `spine_03`, `clavicle_l`, `upperarm_l`, etc.).
 
 ---
 
@@ -97,3 +97,10 @@ When exporting the final asset from Blender to `.glb`:
    * **Transform:** `Y Up` checked
    * **Geometry:** `Apply Modifiers` checked, `UVs` checked, `Normals` checked, `Tangents` checked if using normal maps.
    * **Animation:** Check `Skins` if skinned to avatar armature.
+
+---
+
+## 8. Runtime Attachment Contract & Outfit State
+
+For detailed runtime specifications regarding outfit state management, canonical slot anchors, transform ownership, and object disposal rules, see:
+* **[Garment Attachment & Outfit State System Specification](./GARMENT_ATTACHMENT_SYSTEM.md)**
