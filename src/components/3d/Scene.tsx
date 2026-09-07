@@ -5,6 +5,7 @@ import { StudioLighting } from './Lighting';
 import { Avatar } from './Avatar';
 import { AvatarPlaceholder } from './AvatarPlaceholder';
 import { ModelLoader } from './ModelLoader';
+import { Garment } from './Garment';
 import { ThreeErrorBoundary } from './ThreeErrorBoundary';
 import { Controls } from './CameraControls';
 import { CameraControlsRef, AvatarId } from '@/types/3d';
@@ -13,10 +14,11 @@ export interface SceneProps {
   avatarId?: AvatarId;
   showGrid?: boolean;
   activeModelUrl?: string | null;
+  activeGarmentId?: string | null;
 }
 
 export const Scene = forwardRef<CameraControlsRef, SceneProps>(
-  ({ avatarId = 'male', showGrid = true, activeModelUrl = null }, ref) => {
+  ({ avatarId = 'male', showGrid = true, activeModelUrl = null, activeGarmentId = null }, ref) => {
     return (
       <>
         {/* Background color */}
@@ -33,6 +35,13 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
             <Avatar avatarId={avatarId} position={[0, 0, 0]} />
           </React.Suspense>
         </ThreeErrorBoundary>
+
+        {/* Active Garment Asset Layer (Phase 3 Garment Pipeline) */}
+        {activeGarmentId && (
+          <React.Suspense fallback={null}>
+            <Garment garmentId={activeGarmentId} avatarId={avatarId} />
+          </React.Suspense>
+        )}
 
         {/* Dynamic 3D Asset Loader (Phase 1 Engine Integration) */}
         {activeModelUrl && (

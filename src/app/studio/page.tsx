@@ -1,202 +1,134 @@
 'use client';
-import React, { useRef, useState } from 'react';
+
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
+import { Scene } from '@/components/3d/Scene';
 import { CameraControlsRef, AvatarId } from '@/types/3d';
+import styles from '../page.module.css';
 
 export default function StudioPage() {
-  const controlsRef = useRef<CameraControlsRef>(null);
   const [avatarId, setAvatarId] = useState<AvatarId>('male');
-  const [showGrid, setShowGrid] = useState(true);
+  const [showGrid, setShowGrid] = useState<boolean>(true);
+  const [activeGarmentId, setActiveGarmentId] = useState<string | null>('GARMENT_top_basic_tshirt');
   const [activeModelUrl, setActiveModelUrl] = useState<string | null>(null);
+  const cameraControlsRef = useRef<CameraControlsRef>(null);
 
   const handleResetCamera = () => {
-    if (controlsRef.current) {
-      controlsRef.current.resetCamera();
+    if (cameraControlsRef.current) {
+      cameraControlsRef.current.resetCamera();
     }
   };
 
-  const handleToggleTestModel = () => {
+  const handleLoadTestModel = () => {
     setActiveModelUrl((prev) => (prev ? null : '/models/test-cube.glb'));
   };
 
+  const handleToggleGarment = () => {
+    setActiveGarmentId((prev) => (prev ? null : 'GARMENT_top_basic_tshirt'));
+  };
+
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      width: '100vw',
-      overflow: 'hidden',
-      backgroundColor: '#f5f5f7',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
-    }}>
-      {/* Top Header */}
-      <header style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '0.5rem 1rem',
-        padding: '0.6rem 1rem',
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #e5e5ea',
-        zIndex: 10,
-        boxSizing: 'border-box',
-        maxHeight: 'none'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <Link
-            href="/"
-            style={{
-              fontSize: '0.875rem',
-              color: '#6e6e73',
-              textDecoration: 'none',
-              fontWeight: 500
-            }}
-          >
+    <div className={styles.container}>
+      <header className={styles.header}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <Link href="/" className={styles.backButton}>
             ← Back
           </Link>
-          <span style={{ color: '#d2d2d7' }}>|</span>
-          <h1 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: '#1d1d1f' }}>
-            3D Studio
-          </h1>
+          <h1 className={styles.title}>3D Studio</h1>
         </div>
 
-        {/* Action Controls Header Toolbar */}
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: '0.5rem 0.75rem'
-        }}>
-          {/* Avatar Selector Toggle */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            backgroundColor: '#e8e8ed',
-            borderRadius: '6px',
-            padding: '2px'
-          }}>
+        <div className={styles.controls}>
+          {/* Avatar Switcher */}
+          <div style={{ display: 'flex', background: '#e5e5ea', borderRadius: '8px', padding: '2px' }}>
             <button
-              onClick={() => setAvatarId('male')}
-              aria-pressed={avatarId === 'male'}
+              className={styles.button}
               style={{
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.825rem',
-                fontWeight: avatarId === 'male' ? 600 : 500,
                 backgroundColor: avatarId === 'male' ? '#ffffff' : 'transparent',
-                color: avatarId === 'male' ? '#1d1d1f' : '#6e6e73',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
                 boxShadow: avatarId === 'male' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                transition: 'all 0.15s ease'
+                padding: '0.4rem 0.8rem',
               }}
+              onClick={() => setAvatarId('male')}
             >
               Male
             </button>
             <button
-              onClick={() => setAvatarId('female')}
-              aria-pressed={avatarId === 'female'}
+              className={styles.button}
               style={{
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.825rem',
-                fontWeight: avatarId === 'female' ? 600 : 500,
                 backgroundColor: avatarId === 'female' ? '#ffffff' : 'transparent',
-                color: avatarId === 'female' ? '#1d1d1f' : '#6e6e73',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
                 boxShadow: avatarId === 'female' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                transition: 'all 0.15s ease'
+                padding: '0.4rem 0.8rem',
               }}
+              onClick={() => setAvatarId('female')}
             >
               Female
             </button>
           </div>
 
+          {/* Garment Toggle Control (Phase 3 Developer Control) */}
           <button
-            onClick={handleToggleTestModel}
+            className={styles.button}
+            onClick={handleToggleGarment}
             style={{
-              padding: '0.4rem 0.75rem',
-              fontSize: '0.825rem',
-              fontWeight: 500,
-              backgroundColor: activeModelUrl ? '#e3f2fd' : '#f2f2f7',
-              color: activeModelUrl ? '#0071e3' : '#1d1d1f',
-              border: activeModelUrl ? '1px solid #0071e3' : '1px solid #d1d1d6',
-              borderRadius: '6px',
-              cursor: 'pointer'
+              borderColor: activeGarmentId ? '#34c759' : '#d1d1d6',
+              color: activeGarmentId ? '#248a3d' : '#1c1c1e',
+              backgroundColor: activeGarmentId ? '#eafda6' : '#ffffff',
             }}
           >
-            {activeModelUrl ? 'Unload Test Model' : 'Load Test Asset'}
+            {activeGarmentId ? 'Remove Garment (T-Shirt)' : 'Equip Garment (T-Shirt)'}
           </button>
 
+          {/* Test Asset Loader Toggle */}
           <button
-            onClick={() => setShowGrid((prev) => !prev)}
+            className={styles.button}
+            onClick={handleLoadTestModel}
             style={{
-              padding: '0.4rem 0.75rem',
-              fontSize: '0.825rem',
-              fontWeight: 500,
-              backgroundColor: showGrid ? '#e8e8ed' : '#f2f2f7',
-              color: '#1d1d1f',
-              border: '1px solid #d1d1d6',
-              borderRadius: '6px',
-              cursor: 'pointer'
+              borderColor: activeModelUrl ? '#0071e3' : '#d1d1d6',
+              color: activeModelUrl ? '#0071e3' : '#1c1c1e',
             }}
+          >
+            {activeModelUrl ? 'Remove Test Asset' : 'Load Test Asset'}
+          </button>
+
+          {/* Grid Toggle */}
+          <button
+            className={styles.button}
+            onClick={() => setShowGrid(!showGrid)}
           >
             {showGrid ? 'Hide Grid' : 'Show Grid'}
           </button>
 
-          <button
-            onClick={handleResetCamera}
-            style={{
-              padding: '0.4rem 0.75rem',
-              fontSize: '0.825rem',
-              fontWeight: 500,
-              backgroundColor: '#0071e3',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer'
-            }}
-          >
+          {/* Camera Reset */}
+          <button className={styles.primaryButton} onClick={handleResetCamera}>
             Reset Camera
           </button>
         </div>
       </header>
 
-      {/* Main Studio Viewport */}
-      <main style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
-        <ViewerCanvas
-          ref={controlsRef}
-          avatarId={avatarId}
-          showGrid={showGrid}
-          activeModelUrl={activeModelUrl}
-        />
+      <main className={styles.canvasContainer}>
+        <ViewerCanvas>
+          <Scene
+            ref={cameraControlsRef}
+            avatarId={avatarId}
+            showGrid={showGrid}
+            activeModelUrl={activeModelUrl}
+            activeGarmentId={activeGarmentId}
+          />
+        </ViewerCanvas>
 
-        {/* Viewport Overlay Controls/Info */}
-        <div style={{
-          position: 'absolute',
-          bottom: '1rem',
-          left: '1rem',
-          backgroundColor: 'rgba(255, 255, 255, 0.85)',
-          backdropFilter: 'blur(8px)',
-          padding: '0.6rem 1rem',
-          borderRadius: '8px',
-          fontSize: '0.8rem',
-          color: '#3a3a3c',
-          border: '1px solid rgba(0, 0, 0, 0.08)',
-          pointerEvents: 'none',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-        }}>
-          <div><strong>Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}</div>
-          <div><strong>Drag / Touch:</strong> Rotate Camera</div>
-          <div><strong>Scroll / Pinch:</strong> Zoom</div>
-          {activeModelUrl && (
-            <div style={{ marginTop: '0.25rem', color: '#0071e3', fontWeight: 500 }}>
-              Test GLB Asset Loaded
-            </div>
-          )}
+        {/* Informational overlay */}
+        <div className={styles.overlay}>
+          <div>
+            <strong>Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
+          </div>
+          <div>
+            <strong>Garment:</strong> {activeGarmentId ? 'Basic Short-Sleeve T-Shirt' : 'None'}
+          </div>
+          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', color: '#8e8e93' }}>
+            Drag / Touch: Rotate Camera
+            <br />
+            Scroll / Pinch: Zoom
+          </div>
         </div>
       </main>
     </div>
