@@ -13,16 +13,6 @@ const GLB_HEADER_MAGIC = 0x46546c67; // 'glTF'
 const JSON_CHUNK_TYPE = 0x4e4f534a; // 'JSON'
 const BIN_CHUNK_TYPE = 0x004e4942;  // 'BIN'
 
-// glTF Constants
-const COMPONENT_TYPES = {
-  5120: 'BYTE',
-  5121: 'UNSIGNED_BYTE',
-  5122: 'SHORT',
-  5123: 'UNSIGNED_SHORT',
-  5125: 'UNSIGNED_INT',
-  5126: 'FLOAT',
-};
-
 const VALID_INDEX_COMPONENT_TYPES = [5121, 5123, 5125];
 
 let totalErrors = 0;
@@ -57,31 +47,25 @@ console.log('====================================================');
 console.log('Phase 3 — Garment Pipeline Asset & Registry Validator');
 console.log('====================================================\n');
 
-// 1. Parse GARMENT_REGISTRY statically from src/lib/3d/garmentRegistry.ts
-const registryFilePath = path.join(__dirname, '../src/lib/3d/garmentRegistry.ts');
+// 1. Parse static garments data safely from src/lib/3d/garments.json without source execution
+const garmentsJsonPath = path.join(__dirname, '../src/lib/3d/garments.json');
 let garmentRegistry = {};
 
-if (!fs.existsSync(registryFilePath)) {
-  logFail(`Registry file not found at ${registryFilePath}`);
+if (!fs.existsSync(garmentsJsonPath)) {
+  logFail(`Garments JSON data file not found at ${garmentsJsonPath}`);
 } else {
   try {
-    const registryContent = fs.readFileSync(registryFilePath, 'utf8');
-    const objectMatch = registryContent.match(/export const GARMENT_REGISTRY[^{]*=([\s\S]*?);\n\nexport const/);
-    if (objectMatch && objectMatch[1]) {
-      const evalString = `return ${objectMatch[1]}`;
-      garmentRegistry = new Function(evalString)();
-      logPass(`Parsed GARMENT_REGISTRY cleanly with ${Object.keys(garmentRegistry).length} registered asset(s).`);
-    } else {
-      logFail('Could not extract GARMENT_REGISTRY object from file.');
-    }
+    const rawData = fs.readFileSync(garmentsJsonPath, 'utf8');
+    garmentRegistry = JSON.parse(rawData);
+    logPass(`Loaded static garment registry data cleanly with ${Object.keys(garmentRegistry).length} registered asset(s).`);
   } catch (err) {
-    logFail(`Failed to parse GARMENT_REGISTRY statically: ${err.message}`);
+    logFail(`Failed to parse garments.json: ${err.message}`);
   }
 }
 
 const registeredGarmentIds = Object.keys(garmentRegistry);
 if (registeredGarmentIds.length === 0) {
-  logFail('No garment entries found in GARMENT_REGISTRY.');
+  logFail('No garment entries found in garment registry.');
 }
 
 registeredGarmentIds.forEach((garmentId) => {
@@ -467,7 +451,7 @@ registeredGarmentIds.forEach((garmentId) => {
           const byteLength = bv.byteLength;
 
           if (!isInteger(byteOffset) || byteOffset < 0 || !isInteger(byteLength) || byteLength <= 0) {
-            logFail(`Indices bufferView ${idxAccessor.bufferView} has invalid byteOffset/byteLength.`);
+            logFail(`Indices bufferView ${idxAccessor.byteOffset} has invalid byteOffset/byteLength.`);
             return;
           }
 
@@ -480,6 +464,10 @@ registeredGarmentIds.forEach((garmentId) => {
         primitiveTriCount = idxAccessor.count / 3;
       } else {
         // Non-indexed primitive calculation
+        if (posAccessor.count % 3 !== 0) {
+          logFail(`Non-indexed primitive POSITION accessor count (${posAccessor.count}) is not divisible by 3 for TRIANGLES mode.`);
+          return;
+        }
         primitiveTriCount = posAccessor.count / 3;
       }
 
