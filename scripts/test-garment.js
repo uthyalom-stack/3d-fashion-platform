@@ -15,6 +15,27 @@ const BIN_CHUNK_TYPE = 0x004e4942;  // 'BIN'
 
 const VALID_INDEX_COMPONENT_TYPES = [5121, 5123, 5125];
 
+// Map component types to byte sizes
+const COMPONENT_BYTE_SIZES = {
+  5120: 1, // BYTE
+  5121: 1, // UNSIGNED_BYTE
+  5122: 2, // SHORT
+  5123: 2, // UNSIGNED_SHORT
+  5125: 4, // UNSIGNED_INT
+  5126: 4, // FLOAT
+};
+
+// Map accessor types to component count
+const TYPE_ELEMENT_COUNTS = {
+  SCALAR: 1,
+  VEC2: 2,
+  VEC3: 3,
+  VEC4: 4,
+  MAT2: 4,
+  MAT3: 9,
+  MAT4: 16,
+};
+
 let totalErrors = 0;
 
 function logPass(msg) {
@@ -41,6 +62,123 @@ function isInteger(val) {
 
 function isFiniteNumber(val) {
   return typeof val === 'number' && Number.isFinite(val);
+}
+
+/**
+ * Validates the complete glTF buffer -> bufferView -> accessor reference and byte range chain.
+ */
+function validateAccessorAndBufferView(accessorName, accIdx, gltf, binLength) {
+  const accessors = isArray(gltf.accessors) ? gltf.accessors : [];
+  const bufferViews = isArray(gltf.bufferViews) ? gltf.bufferViews : [];
+  const buffers = isArray(gltf.buffers) ? gltf.buffers : [];
+
+  if (!isInteger(accIdx) || accIdx < 0 || accIdx >= accessors.length) {
+    logFail(`${accessorName} accessor index ${accIdx} is invalid or out of range.`);
+    return false;
+  }
+
+  const accessor = accessors[accIdx];
+  if (!isObject(accessor)) {
+    logFail(`${accessorName} accessor ${accIdx} is not a valid object.`);
+    return false;
+  }
+
+  if (!isInteger(accessor.count) || accessor.count <= 0) {
+    logFail(`${accessorName} accessor ${accIdx} count is invalid or non-positive (${accessor.count}).`);
+    return false;
+  }
+
+  const accByteOffset = accessor.byteOffset !== undefined ? accessor.byteOffset : 0;
+  if (!isInteger(accByteOffset) || accByteOffset < 0) {
+    logFail(`${accessorName} accessor ${accIdx} has invalid byteOffset (${accessor.byteOffset}).`);
+    return false;
+  }
+
+  if (accessor.bufferView === undefined) {
+    logFail(`${accessorName} accessor ${accIdx} missing required bufferView reference.`);
+    return false;
+  }
+
+  if (!isInteger(accessor.bufferView) || accessor.bufferView < 0 || accessor.bufferView >= bufferViews.length) {
+    logFail(`${accessorName} accessor ${accIdx} references invalid bufferView index ${accessor.bufferView}.`);
+    return false;
+  }
+
+  const bv = bufferViews[accessor.bufferView];
+  if (!isObject(bv)) {
+    logFail(`bufferView ${accessor.bufferView} referenced by ${accessorName} accessor ${accIdx} is not a valid object.`);
+    return false;
+  }
+
+  if (!isInteger(bv.buffer) || bv.buffer < 0 || bv.buffer >= buffers.length) {
+    logFail(`bufferView ${accessor.bufferView} references invalid buffer index ${bv.buffer}.`);
+    return false;
+  }
+
+  const refBuffer = buffers[bv.buffer];
+  if (!isObject(refBuffer) || !isInteger(refBuffer.byteLength) || refBuffer.byteLength < 0) {
+    logFail(`bufferView ${accessor.bufferView} references invalid buffer ${bv.buffer}.`);
+    return false;
+  }
+
+  const bvByteOffset = bv.byteOffset !== undefined ? bv.byteOffset : 0;
+  if (!isInteger(bvByteOffset) || bvByteOffset < 0) {
+    logFail(`bufferView ${accessor.bufferView} has invalid byteOffset (${bv.byteOffset}).`);
+    return false;
+  }
+
+  if (!isInteger(bv.byteLength) || bv.byteLength <= 0) {
+    logFail(`bufferView ${accessor.bufferView} has invalid byteLength (${bv.byteLength}).`);
+    return false;
+  }
+
+  if (bvByteOffset + bv.byteLength > refBuffer.byteLength) {
+    logFail(`bufferView ${accessor.bufferView} byte range (${bvByteOffset} + ${bv.byteLength}) exceeds declared buffer ${bv.buffer} byteLength (${refBuffer.byteLength}).`);
+    return false;
+  }
+
+  if (bvByteOffset + bv.byteLength > binLength) {
+    logFail(`bufferView ${accessor.bufferView} byte range (${bvByteOffset} + ${bv.byteLength}) exceeds BIN payload length (${binLength}).`);
+    return false;
+  }
+
+  const compByteSize = COMPONENT_BYTE_SIZES[accessor.componentType];
+  const typeElemCount = TYPE_ELEMENT_COUNTS[accessor.type];
+  if (!compByteSize || !typeElemCount) {
+    logFail(`${accessorName} accessor ${accIdx} has invalid componentType (${accessor.componentType}) or type ("${accessor.type}").`);
+    return false;
+  }
+
+  const elementSize = compByteSize * typeElemCount;
+
+  if (bv.byteStride !== undefined) {
+    if (!isInteger(bv.byteStride) || bv.byteStride <= 0) {
+      logFail(`bufferView ${accessor.bufferView} has non-positive or non-integer byteStride (${bv.byteStride}).`);
+      return false;
+    }
+    if (bv.byteStride % 4 !== 0) {
+      logFail(`bufferView ${accessor.bufferView} byteStride (${bv.byteStride}) is not a multiple of 4.`);
+      return false;
+    }
+    if (bv.byteStride < elementSize) {
+      logFail(`bufferView ${accessor.bufferView} byteStride (${bv.byteStride}) is smaller than element size (${elementSize}).`);
+      return false;
+    }
+  }
+
+  let requiredBytes = 0;
+  if (bv.byteStride !== undefined) {
+    requiredBytes = (accessor.count - 1) * bv.byteStride + elementSize;
+  } else {
+    requiredBytes = accessor.count * elementSize;
+  }
+
+  if (accByteOffset + requiredBytes > bv.byteLength) {
+    logFail(`${accessorName} accessor ${accIdx} required byte range (${accByteOffset} + ${requiredBytes}) exceeds bufferView ${accessor.bufferView} byteLength (${bv.byteLength}).`);
+    return false;
+  }
+
+  return true;
 }
 
 console.log('====================================================');
@@ -234,6 +372,29 @@ registeredGarmentIds.forEach((garmentId) => {
   const accessors = isArray(gltf.accessors) ? gltf.accessors : [];
   const bufferViews = isArray(gltf.bufferViews) ? gltf.bufferViews : [];
 
+  // Validate gltf.buffers array
+  if (bufferViews.length > 0 || accessors.length > 0) {
+    if (!isArray(gltf.buffers) || gltf.buffers.length === 0) {
+      logFail('glTF missing required buffers array for declared bufferViews/accessors.');
+    } else {
+      gltf.buffers.forEach((buf, bIdx) => {
+        if (!isObject(buf)) {
+          logFail(`Buffer ${bIdx} is not a valid object.`);
+          return;
+        }
+        if (!isInteger(buf.byteLength) || buf.byteLength < 0) {
+          logFail(`Buffer ${bIdx} has invalid byteLength (${buf.byteLength}).`);
+          return;
+        }
+        if (buf.byteLength > binLength) {
+          logFail(`Buffer ${bIdx} byteLength (${buf.byteLength}) exceeds available BIN payload length (${binLength}).`);
+        } else {
+          logPass(`Buffer ${bIdx} validated (byteLength: ${buf.byteLength}).`);
+        }
+      });
+    }
+  }
+
   // Validate scene -> node references
   scenes.forEach((scene, sIdx) => {
     if (isObject(scene) && isArray(scene.nodes)) {
@@ -322,16 +483,11 @@ registeredGarmentIds.forEach((garmentId) => {
 
       // 1. POSITION Accessor Validation
       const posAccIdx = primitive.attributes.POSITION;
-      if (!isInteger(posAccIdx) || posAccIdx < 0 || posAccIdx >= accessors.length) {
-        logFail(`Mesh ${mIdx} primitive ${pIdx} references invalid POSITION accessor index ${posAccIdx}.`);
+      if (!validateAccessorAndBufferView('POSITION', posAccIdx, gltf, binLength)) {
         return;
       }
 
       const posAccessor = accessors[posAccIdx];
-      if (!isObject(posAccessor)) {
-        logFail(`POSITION accessor ${posAccIdx} is not a valid object.`);
-        return;
-      }
 
       if (posAccessor.type !== 'VEC3') {
         logFail(`POSITION accessor ${posAccIdx} type is "${posAccessor.type}" (Expected "VEC3").`);
@@ -341,38 +497,6 @@ registeredGarmentIds.forEach((garmentId) => {
       if (posAccessor.componentType !== 5126) {
         logFail(`POSITION accessor ${posAccIdx} componentType is ${posAccessor.componentType} (Expected 5126 = FLOAT).`);
         return;
-      }
-
-      if (!isInteger(posAccessor.count) || posAccessor.count <= 0) {
-        logFail(`POSITION accessor ${posAccIdx} count is non-positive (${posAccessor.count}).`);
-        return;
-      }
-
-      // Validate bufferView for POSITION accessor
-      if (posAccessor.bufferView !== undefined) {
-        if (!isInteger(posAccessor.bufferView) || posAccessor.bufferView < 0 || posAccessor.bufferView >= bufferViews.length) {
-          logFail(`POSITION accessor ${posAccIdx} references invalid bufferView index ${posAccessor.bufferView}.`);
-          return;
-        }
-
-        const bv = bufferViews[posAccessor.bufferView];
-        if (!isObject(bv)) {
-          logFail(`bufferView ${posAccessor.bufferView} is not a valid object.`);
-          return;
-        }
-
-        const byteOffset = bv.byteOffset !== undefined ? bv.byteOffset : 0;
-        const byteLength = bv.byteLength;
-
-        if (!isInteger(byteOffset) || byteOffset < 0 || !isInteger(byteLength) || byteLength <= 0) {
-          logFail(`bufferView ${posAccessor.bufferView} has invalid byteOffset (${byteOffset}) or byteLength (${byteLength}).`);
-          return;
-        }
-
-        if (byteOffset + byteLength > binLength) {
-          logFail(`bufferView ${posAccessor.bufferView} byte range (${byteOffset} + ${byteLength}) extends beyond BIN buffer length (${binLength}).`);
-          return;
-        }
       }
 
       // Validate POSITION min/max bounds
@@ -404,16 +528,11 @@ registeredGarmentIds.forEach((garmentId) => {
       // 2. Indices Accessor Validation (if indexed primitive)
       if (primitive.indices !== undefined) {
         const idxAccIdx = primitive.indices;
-        if (!isInteger(idxAccIdx) || idxAccIdx < 0 || idxAccIdx >= accessors.length) {
-          logFail(`Mesh ${mIdx} primitive ${pIdx} references invalid indices accessor index ${idxAccIdx}.`);
+        if (!validateAccessorAndBufferView('Indices', idxAccIdx, gltf, binLength)) {
           return;
         }
 
         const idxAccessor = accessors[idxAccIdx];
-        if (!isObject(idxAccessor)) {
-          logFail(`Indices accessor ${idxAccIdx} is not a valid object.`);
-          return;
-        }
 
         if (idxAccessor.type !== 'SCALAR') {
           logFail(`Indices accessor ${idxAccIdx} type is "${idxAccessor.type}" (Expected "SCALAR").`);
@@ -425,40 +544,9 @@ registeredGarmentIds.forEach((garmentId) => {
           return;
         }
 
-        if (!isInteger(idxAccessor.count) || idxAccessor.count <= 0) {
-          logFail(`Indices accessor ${idxAccIdx} count is non-positive (${idxAccessor.count}).`);
-          return;
-        }
-
         if (idxAccessor.count % 3 !== 0) {
           logFail(`Indices accessor ${idxAccIdx} count (${idxAccessor.count}) is not divisible by 3 for TRIANGLES mode.`);
           return;
-        }
-
-        if (idxAccessor.bufferView !== undefined) {
-          if (!isInteger(idxAccessor.bufferView) || idxAccessor.bufferView < 0 || idxAccessor.bufferView >= bufferViews.length) {
-            logFail(`Indices accessor ${idxAccIdx} references invalid bufferView index ${idxAccessor.bufferView}.`);
-            return;
-          }
-
-          const bv = bufferViews[idxAccessor.bufferView];
-          if (!isObject(bv)) {
-            logFail(`Indices bufferView ${idxAccessor.bufferView} is not a valid object.`);
-            return;
-          }
-
-          const byteOffset = bv.byteOffset !== undefined ? bv.byteOffset : 0;
-          const byteLength = bv.byteLength;
-
-          if (!isInteger(byteOffset) || byteOffset < 0 || !isInteger(byteLength) || byteLength <= 0) {
-            logFail(`Indices bufferView ${idxAccessor.byteOffset} has invalid byteOffset/byteLength.`);
-            return;
-          }
-
-          if (byteOffset + byteLength > binLength) {
-            logFail(`Indices bufferView ${idxAccessor.bufferView} extends beyond BIN buffer length.`);
-            return;
-          }
         }
 
         primitiveTriCount = idxAccessor.count / 3;
