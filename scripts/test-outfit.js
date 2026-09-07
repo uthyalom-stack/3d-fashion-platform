@@ -1,37 +1,5 @@
 const assert = require('assert');
-const path = require('path');
-
-// Register ts-node with extensions so Node can resolve `.ts` files
-try {
-  require('ts-node').register({
-    transpileOnly: true,
-    compilerOptions: {
-      module: 'commonjs',
-      moduleResolution: 'node',
-    },
-  });
-} catch (e) {
-  // Fallback
-}
-
-// Ensure .ts extensions are tried during CJS module resolution
-if (require.extensions) {
-  ['.ts', '.tsx'].forEach((ext) => {
-    if (!require.extensions[ext]) {
-      require.extensions[ext] = require.extensions['.js'];
-    }
-  });
-}
-
-try {
-  const tsconfigPaths = require('tsconfig-paths');
-  tsconfigPaths.register({
-    baseUrl: path.resolve(__dirname, '..'),
-    paths: { '@/*': ['./src/*'] },
-  });
-} catch (e) {
-  // Fallback
-}
+const THREE = require('three');
 
 const {
   createEmptyOutfitState,
@@ -44,17 +12,68 @@ const {
 
 const {
   resolveGarmentTransform,
+  resolveAttachmentAnchor,
+  findAvatarJoint,
+  attachGarmentToAnchor,
+  detachGarmentFromAnchor,
   ATTACHMENT_ANCHORS,
 } = require('../src/lib/3d/attachmentResolver');
 
 const { CANONICAL_GARMENT_SLOTS } = require('../src/types/garment');
+
+function createFixtureAvatarSkeleton(avatarId = 'male', missingJoints = []) {
+  const avatarRoot = new THREE.Object3D();
+  avatarRoot.name = `avatar-root-${avatarId}`;
+
+  const rootBone = new THREE.Bone();
+  rootBone.name = 'Root';
+  avatarRoot.add(rootBone);
+
+  const pelvisBone = new THREE.Bone();
+  pelvisBone.name = 'pelvis';
+  if (!missingJoints.includes('pelvis')) {
+    rootBone.add(pelvisBone);
+  }
+
+  const spine1Bone = new THREE.Bone();
+  spine1Bone.name = 'spine_01';
+  if (!missingJoints.includes('spine_01')) {
+    pelvisBone.add(spine1Bone);
+  }
+
+  const spine2Bone = new THREE.Bone();
+  spine2Bone.name = 'spine_02';
+  if (!missingJoints.includes('spine_02')) {
+    spine1Bone.add(spine2Bone);
+  }
+
+  const spine3Bone = new THREE.Bone();
+  spine3Bone.name = 'spine_03';
+  if (!missingJoints.includes('spine_03')) {
+    spine2Bone.add(spine3Bone);
+  }
+
+  const footLBone = new THREE.Bone();
+  footLBone.name = 'foot_l';
+  if (!missingJoints.includes('foot_l')) {
+    pelvisBone.add(footLBone);
+  }
+
+  const handRBone = new THREE.Bone();
+  handRBone.name = 'hand_r';
+  if (!missingJoints.includes('hand_r')) {
+    spine3Bone.add(handRBone);
+  }
+
+  avatarRoot.updateMatrixWorld(true);
+  return avatarRoot;
+}
 
 function runOutfitTests() {
   console.log('====================================================');
   console.log('Phase 4 — Outfit State & Garment Attachment Unit Tests');
   console.log('====================================================\n');
 
-  // Mock Garment Registry Fixtures for WebGL-independent state testing
   const MOCK_REGISTRY = {
     GARMENT_top_shirt: {
       id: 'GARMENT_top_shirt',
@@ -243,8 +262,78 @@ function runOutfitTests() {
   const transformFemale = resolveGarmentTransform(MOCK_REGISTRY.GARMENT_top_shirt, 'female');
   assert.strictEqual(transformFemale.scale, 0.10, 'Female scale factor resolved correctly');
   assert.strictEqual(transformFemale.anchorJoint, 'spine_02');
-
   console.log('✔ PASS: Attachment transforms and skeletal anchor points resolved correctly.');
+
+  // --- SKELETAL ATTACHMENT ARCHITECTURE TESTS ---
+
+  // 14. Existing Joint Resolution
+  console.log('\nTest 14: Existing Joint Resolution from Avatar Scene');
+  const maleSkeleton = createFixtureAvatarSkeleton('male');
+  const resolvedBone = resolveAttachmentAnchor(maleSkeleton, 'top', 'male');
+  assert.ok(resolvedBone, 'Must resolve a valid bone node');
+  assert.strictEqual(resolvedBone.name, 'spine_02', 'Resolved bone name must match canonical primary joint "spine_02"');
+  console.log('✔ PASS: Resolved expected THREE.Bone node from avatar skeleton hierarchy.');
+
+  // 15. Missing Joint Controlled Error Handling
+  console.log('\nTest 15: Missing Joint Controlled Failure');
+  const brokenSkeleton = createFixtureAvatarSkeleton('male', ['spine_02', 'spine_03', 'clavicle_l', 'clavicle_r']);
+  assert.throws(
+    () => resolveAttachmentAnchor(brokenSkeleton, 'top', 'male'),
+    /Attachment Error: Required skeletal joint "spine_02"/,
+    'Must throw explicit controlled Error when required joint is missing'
+  );
+  console.log('✔ PASS: Missing skeletal joint produced controlled Error without uncontrolled crash.');
+
+  // 16. Real Parent Relationship Check
+  console.log('\nTest 16: Parent Relationship Check (garment.parent === anchorNode)');
+  const garmentAGroup = new THREE.Group();
+  garmentAGroup.name = 'garment-root-GARMENT_top_shirt';
+
+  attachGarmentToAnchor(garmentAGroup, resolvedBone, transformMale);
+  assert.strictEqual(garmentAGroup.parent, resolvedBone, 'Garment group must be parented inside resolvedBone');
+  assert.ok(resolvedBone.children.includes(garmentAGroup), 'Garment group must exist in bone.children array');
+  console.log('✔ PASS: Garment group genuinely parented inside avatar bone Object3D hierarchy.');
+
+  // 17. Garment Replacement Hierarchy Test
+  console.log('\nTest 17: Garment Replacement Hierarchy (A detached, B attached)');
+  const garmentBGroup = new THREE.Group();
+  garmentBGroup.name = 'garment-root-GARMENT_top_female_blouse';
+
+  // Replace Garment A with Garment B
+  detachGarmentFromAnchor(garmentAGroup);
+  attachGarmentToAnchor(garmentBGroup, resolvedBone, transformFemale);
+
+  assert.strictEqual(garmentAGroup.parent, null, 'Garment A must no longer be attached');
+  assert.strictEqual(garmentBGroup.parent, resolvedBone, 'Garment B must be attached to bone');
+  assert.strictEqual(resolvedBone.children.includes(garmentAGroup), false, 'Garment A removed from bone children');
+  assert.strictEqual(resolvedBone.children.includes(garmentBGroup), true, 'Garment B present in bone children');
+  console.log('✔ PASS: Garment replacement detached previous garment and attached new garment to bone.');
+
+  // 18. Unequip Detachment Test
+  console.log('\nTest 18: Unequip Detachment');
+  detachGarmentFromAnchor(garmentBGroup);
+  assert.strictEqual(garmentBGroup.parent, null, 'Unequipped garment must have null parent');
+  assert.strictEqual(resolvedBone.children.includes(garmentBGroup), false, 'Unequipped garment removed from bone children');
+  console.log('✔ PASS: Unequip detached garment cleanly from avatar skeleton.');
+
+  // 19. Avatar Switching Re-parenting Test
+  console.log('\nTest 19: Avatar Switch Re-parenting across Skeleton Graphs');
+  const femaleSkeleton = createFixtureAvatarSkeleton('female');
+  const femaleBone = resolveAttachmentAnchor(femaleSkeleton, 'top', 'female');
+
+  // Attach to Male Skeleton
+  attachGarmentToAnchor(garmentAGroup, resolvedBone, transformMale);
+  assert.strictEqual(garmentAGroup.parent, resolvedBone);
+
+  // Switch to Female Skeleton
+  detachGarmentFromAnchor(garmentAGroup);
+  attachGarmentToAnchor(garmentAGroup, femaleBone, transformFemale);
+
+  assert.notStrictEqual(garmentAGroup.parent, resolvedBone, 'Must no longer be parented to male bone');
+  assert.strictEqual(garmentAGroup.parent, femaleBone, 'Must be parented to female bone');
+  assert.strictEqual(resolvedBone.children.includes(garmentAGroup), false);
+  assert.strictEqual(femaleBone.children.includes(garmentAGroup), true);
+  console.log('✔ PASS: Garment re-parented cleanly from male skeleton to female skeleton on avatar switch.');
 
   console.log('\n====================================================');
   console.log('\x1b[32mSUCCESS: All Outfit State & Attachment Unit Tests Passed!\x1b[0m');

@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
+import { Object3D } from 'three';
 import { ModelLoader } from './ModelLoader';
-import { AvatarProps, AvatarId, AvatarConfig } from '@/types/3d';
+import { AvatarProps, AvatarId, AvatarConfig } from '../../types/3d';
 
 /**
  * Avatar Registry Configuration
@@ -32,10 +33,14 @@ export const AVATAR_REGISTRY: Record<AvatarId, AvatarConfig> = {
 
 export const DEFAULT_AVATAR_ID: AvatarId = 'male';
 
+export interface ExtendedAvatarProps extends AvatarProps {
+  onAvatarLoaded?: (scene: Object3D) => void;
+}
+
 /**
  * Reusable Base Avatar Component
  * Serves as the primary 3D adult human foundation for fashion visualization.
- * Encapsulates MakeHuman / MPFB2 assets and attachment group containers.
+ * Encapsulates MakeHuman / MPFB2 assets and passes loaded skeletal scene tree for garment attachment.
  *
  * ARCHITECTURE & FLOW:
  * Scene -> Avatar (resolves avatarId) -> ModelLoader -> useGLTF -> GLB
@@ -51,7 +56,8 @@ export function Avatar({
   receiveShadow = true,
   deepCloneMaterials = false,
   onLoad,
-}: AvatarProps) {
+  onAvatarLoaded,
+}: ExtendedAvatarProps) {
   // Resolve configuration from registry
   const config = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY[DEFAULT_AVATAR_ID];
 
@@ -74,6 +80,17 @@ export function Avatar({
       ]
     : config.rotationOffset;
 
+  const handleModelLoaded = (scene?: Object3D) => {
+    if (scene) {
+      if (onAvatarLoaded) {
+        onAvatarLoaded(scene);
+      }
+    }
+    if (onLoad) {
+      onLoad();
+    }
+  };
+
   return (
     <group name={`avatar-root-${config.id}`} key={config.id}>
       <ModelLoader
@@ -84,7 +101,7 @@ export function Avatar({
         castShadow={castShadow}
         receiveShadow={receiveShadow}
         deepCloneMaterials={deepCloneMaterials}
-        onLoad={onLoad}
+        onLoad={handleModelLoaded}
       />
 
       {/* Group containers for future garment slot attachments */}
@@ -96,7 +113,7 @@ export function Avatar({
             name={`garment-slot-${slot.id}`}
             data-category={slot.category}
           >
-            {/* Garment layers will attach here in future garment phases */}
+            {/* Garment layers attach into real skeletal joints */}
           </group>
         );
       })}

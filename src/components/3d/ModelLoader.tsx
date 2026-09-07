@@ -3,7 +3,7 @@
 import React, { useMemo, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { Object3D, Mesh, Material } from 'three';
-import { disposeMaterial } from '@/lib/3d/disposal';
+import { disposeMaterial } from '../../lib/3d/disposal';
 
 export interface ModelLoaderProps {
   url: string;
@@ -18,7 +18,7 @@ export interface ModelLoaderProps {
   deepCloneMaterials?: boolean;
   castShadow?: boolean;
   receiveShadow?: boolean;
-  onLoad?: () => void;
+  onLoad?: (scene?: Object3D) => void;
 }
 
 /**
@@ -64,10 +64,10 @@ export function ModelLoader({
     return clonedScene;
   }, [gltf, castShadow, receiveShadow]);
 
-  // Handle onLoad callback
+  // Handle onLoad callback with cloned scene object
   useEffect(() => {
     if (modelScene && onLoad) {
-      onLoad();
+      onLoad(modelScene);
     }
   }, [modelScene, onLoad]);
 

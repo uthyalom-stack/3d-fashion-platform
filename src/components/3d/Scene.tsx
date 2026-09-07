@@ -1,6 +1,7 @@
 'use client';
 
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
 import { StudioLighting } from './Lighting';
 import { Avatar } from './Avatar';
 import { AvatarPlaceholder } from './AvatarPlaceholder';
@@ -8,8 +9,8 @@ import { ModelLoader } from './ModelLoader';
 import { Garment } from './Garment';
 import { ThreeErrorBoundary } from './ThreeErrorBoundary';
 import { Controls } from './CameraControls';
-import { CameraControlsRef, AvatarId } from '@/types/3d';
-import { OutfitState, CANONICAL_GARMENT_SLOTS } from '@/types/garment';
+import { CameraControlsRef, AvatarId } from '../../types/3d';
+import { OutfitState, CANONICAL_GARMENT_SLOTS } from '../../types/garment';
 
 export interface SceneProps {
   avatarId?: AvatarId;
@@ -30,7 +31,13 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
     },
     ref
   ) => {
-    // Resolve active garments per slot: prefer explicit outfitState, fallback to activeGarmentId as 'top'
+    const [avatarScene, setAvatarScene] = useState<THREE.Object3D | null>(null);
+
+    const handleAvatarLoaded = useCallback((scene: THREE.Object3D) => {
+      setAvatarScene(scene);
+    }, []);
+
+    // Resolve active garments per slot
     const resolvedOutfitState: OutfitState = outfitState || {
       top: activeGarmentId,
       bottom: null,
@@ -52,11 +59,15 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
           fallback={<AvatarPlaceholder position={[0, 0, 0]} />}
         >
           <React.Suspense fallback={<AvatarPlaceholder position={[0, 0, 0]} />}>
-            <Avatar avatarId={avatarId} position={[0, 0, 0]} />
+            <Avatar
+              avatarId={avatarId}
+              position={[0, 0, 0]}
+              onAvatarLoaded={handleAvatarLoaded}
+            />
           </React.Suspense>
         </ThreeErrorBoundary>
 
-        {/* Active Garment Layers driven by Outfit State (Phase 4 Attachment System) */}
+        {/* Active Garment Layers attached directly into Avatar Skeleton Hierarchy */}
         {CANONICAL_GARMENT_SLOTS.map((slot) => {
           const garmentId = resolvedOutfitState[slot];
           if (!garmentId) return null;
@@ -68,6 +79,7 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
                   key={`garment-render-${slot}-${garmentId}`}
                   garmentId={garmentId}
                   avatarId={avatarId}
+                  avatarScene={avatarScene}
                 />
               </React.Suspense>
             </ThreeErrorBoundary>

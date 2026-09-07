@@ -1,6 +1,6 @@
 # Garment Attachment & Outfit State System Specification
 
-This document defines the Phase 4 runtime contract for garment attachment, outfit state management, skeletal anchor resolution, and Three.js object lifecycle management for the 3D Fashion Platform.
+This document defines the Phase 4 runtime contract for garment attachment, outfit state management, skeletal anchor resolution, real Three.js bone parenting, and object lifecycle management for the 3D Fashion Platform.
 
 ---
 
@@ -59,42 +59,32 @@ Outfit state mutations are managed through centralized pure operations (`src/lib
 
 ### Replace
 * If a slot already contains an active garment, `equip(slot, newGarmentId)` or `replace(slot, newGarmentId)` replaces the old garment with `newGarmentId`.
-* The previous garment is unmounted, and the new garment is rendered. There is never a state where `slot = [garmentA, garmentB]`.
+* The previous garment is unmounted and detached from the skeletal bone, and the new garment is attached. There is never a state where `slot = [garmentA, garmentB]`.
 
 ### Unequip
-* `unequip(slot)` sets `slot` to `null`. The rendered 3D object for that slot is unmounted from the scene graph.
-
-### Multi-Slot Coexistence
-* Different slots are completely independent and may be occupied simultaneously:
-  ```text
-  top    = GARMENT_top_basic_tshirt
-  bottom = GARMENT_bottom_denim_jeans
-  feet   = GARMENT_feet_sneakers
-  ```
+* `unequip(slot)` sets `slot` to `null`. The rendered 3D object for that slot is detached from the avatar skeleton bone and unmounted from the scene graph.
 
 ---
 
-## 4. Avatar Compatibility & Avatar Switching
+## 4. Real Runtime Skeletal Attachment Architecture
 
-Avatars supported in Phase 4 are `male` and `female` adult base avatars.
+Rather than rendering garments as independent root-level scene objects, Phase 4 attaches garments directly into the avatar's real `THREE.Bone` / `THREE.Object3D` skeletal hierarchy (`src/lib/3d/attachmentResolver.ts`).
 
-### Validation at Equip
-Garment asset configs specify `supportedAvatarIds: string[]`. Equipping a garment on an unsupported avatar fails deterministically.
+```text
+Avatar GLB Loaded Scene
+    ↓
+findAvatarJoint(avatarScene, 'spine_02')
+    ↓
+resolveAttachmentAnchor(avatarScene, slot, avatarId)
+    ↓
+THREE.Bone Anchor Node
+    ↓
+attachGarmentToAnchor(garmentGroup, anchorNode, transform)
+    ↓
+garmentGroup.parent === anchorNode (True)
+```
 
-### Behavior on Avatar Switch
-When switching the active base avatar in Studio (e.g., `male` → `female`):
-1. The system inspects every currently equipped garment in `OutfitState`.
-2. Each garment is re-validated against the new avatar ID.
-3. Garments compatible with the new avatar remain equipped.
-4. Garments incompatible with the new avatar are deterministically unequipped (`slot` set to `null`).
-5. Incompatible garments are never rendered on the new avatar.
-
----
-
-## 5. Attachment Anchor Strategy & Skeletal Mapping
-
-Rather than positioning garments via scattered UI transform offsets, Phase 4 establishes a centralized attachment mapping from canonical slots to the real 53-joint humanoid skeleton (`Human.rig`):
-
+### Skeletal Anchor Mapping:
 ```typescript
 export const ATTACHMENT_ANCHORS: Record<GarmentSlot, AttachmentAnchor> = {
   top: { slot: 'top', primaryJoint: 'spine_02', secondaryJoints: ['spine_03', 'clavicle_l', 'clavicle_r'] },
@@ -105,39 +95,39 @@ export const ATTACHMENT_ANCHORS: Record<GarmentSlot, AttachmentAnchor> = {
 };
 ```
 
----
-
-## 6. Single Source of Truth for Transform Ownership
-
-All attachment transform calculations are centralized in `src/lib/3d/attachmentResolver.ts`:
-
-```typescript
-export function resolveGarmentTransform(
-  garment: GarmentAssetConfig,
-  avatarId: AvatarId = 'male'
-): ResolvedGarmentTransform
-```
-
-### Resolution Logic:
-1. **Scale**: Resolves numeric scale factor by combining avatar base scale (`scale: 0.11` for male, `scale: 0.10` for female) with explicit garment scale overrides (`garment.scale`).
-2. **Position Offset**: Combines avatar root position offset with `garment.positionOffset`.
-3. **Rotation Offset**: Combines avatar root rotation offset with `garment.rotationOffset`.
-4. **Anchor Joint**: Derives primary skeletal joint reference from `ATTACHMENT_ANCHORS[garment.slot]`.
-
-No individual React component or scene overlay is permitted to inject arbitrary transform hacks.
+When the avatar rotates, moves, or animates, the attached garment transforms automatically with the avatar skeleton because `garmentGroup.parent === anchorNode`.
 
 ---
 
-## 7. Garment Asset Authoring Contract (Static & Future Skinned Garments)
+## 5. Controlled Missing Joint Error Handling
 
-### A. Static Pre-Authored Garments
-* Authored directly against the canonical base avatar GLB mesh in Blender in neutral standing A-pose.
-* Ground plane contact at `(0, 0, 0)` with standard decimeter/meter scale matching MPFB2 specifications.
-* Attached as rigid hierarchical group objects normalized via `resolveGarmentTransform`.
+If a required skeletal bone (e.g. `spine_02`) cannot be located in the loaded avatar scene graph:
+* `resolveAttachmentAnchor` DOES NOT silently fall back to `(0,0,0)` or arbitrary world coordinates.
+* It throws an explicit controlled Error:
+  ```text
+  Attachment Error: Required skeletal joint "spine_02" for slot "top" on avatar "male" was not found in avatar hierarchy.
+  ```
+* The error is caught safely by `ThreeErrorBoundary` and logged, keeping the application stable.
 
-### B. Future Skinned Garments
-* Skinned garments will bind directly to the avatar's 53-joint armature (`Root`, `pelvis`, `spine_01`, `spine_02`, `spine_03`, etc.).
-* Because the attachment contract resolves primary anchor joints, future skinned garments can bind to the target avatar armature seamlessly without breaking the `OutfitState` or `Garment` layer architecture.
+---
+
+## 6. Avatar Compatibility & Avatar Switching Re-parenting
+
+When switching the active base avatar in Studio (e.g., `male` → `female`):
+1. `Garment` instances detach from the old avatar's skeletal bones (`detachGarmentFromAnchor`).
+2. `syncOutfitForAvatar` inspects every currently equipped garment.
+3. Incompatible garments are auto-purged from `OutfitState` (`slot` set to `null`).
+4. Compatible garments resolve the corresponding bone on the NEW avatar's skeletal graph and re-parent cleanly (`attachGarmentToAnchor`).
+
+---
+
+## 7. Transform Separation
+
+The platform strictly separates:
+* **Attachment**: The skeletal bone where the garment belongs on the avatar skeleton (`spine_02`, `pelvis`, etc.).
+* **Local Transform Metadata**: Legitimate authored local adjustments (`positionOffset`, `rotationOffset`, `scale`).
+
+Transform resolution is centralized in `resolveGarmentTransform(garment, avatarId)`. No component or UI overlay injects arbitrary transform hacks.
 
 ---
 
@@ -149,8 +139,8 @@ The system follows strict resource ownership rules (`src/lib/3d/disposal.ts`):
    * Shared geometries, materials, and textures cached by `@react-three/drei` (`useGLTF`) MUST NEVER be disposed when an individual garment unmounts or is replaced.
 2. **Component-Owned Resources**:
    * Cloned material instances created explicitly by `ModelLoader` when `deepCloneMaterials = true` belong to that component instance and are disposed on unmount.
-3. **Garment Replacement Unmounting**:
-   * When `Garment A` is replaced by `Garment B`, React reconciliation unmounts `Garment A` using its unique component key (`garment-render-${slot}-${garmentId}`). `ModelLoader` cleanup safely unmounts the Object3D node tree without destroying cached GPU allocations.
+3. **Skeletal Detachment on Unmount**:
+   * When `Garment A` is replaced by `Garment B` or unequipped, `Garment`'s `useEffect` cleanup calls `detachGarmentFromAnchor(garmentGroup)`. `garmentGroup` is removed from `anchorBone.children` before React unmounts the component.
 
 ---
 
