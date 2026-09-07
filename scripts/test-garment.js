@@ -2,12 +2,7 @@
  * Comprehensive Garment Asset & Registry Integrity Validator
  * Validates 3D GLB garment assets and registry configurations without WebGL browser runtime.
  *
- * Validates:
- * 1. GLB Container Structure (Header, Version, File Length, JSON chunk bounds, BIN chunk bounds)
- * 2. glTF Structural Integrity & Indices (Scenes, Nodes, Meshes, Primitives, Accessors, BufferViews)
- * 3. Canonical Garment Naming Conventions (GARMENT_<slot>_<name> pattern enforced on Nodes & Meshes)
- * 4. Geometry Metrics & Bounds (POSITION accessor VEC3 type, valid min/max, positive volume, non-zero tris/verts)
- * 5. Registry Integrity (Matching IDs, modelUrl path verification, avatar compatibility, metadata consistency)
+ * Defensive & Safe: Never crashes on malformed GLB structures; fails with controlled status 1.
  */
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -18,6 +13,18 @@ const GLB_HEADER_MAGIC = 0x46546c67; // 'glTF'
 const JSON_CHUNK_TYPE = 0x4e4f534a; // 'JSON'
 const BIN_CHUNK_TYPE = 0x004e4942;  // 'BIN'
 
+// glTF Constants
+const COMPONENT_TYPES = {
+  5120: 'BYTE',
+  5121: 'UNSIGNED_BYTE',
+  5122: 'SHORT',
+  5123: 'UNSIGNED_SHORT',
+  5125: 'UNSIGNED_INT',
+  5126: 'FLOAT',
+};
+
+const VALID_INDEX_COMPONENT_TYPES = [5121, 5123, 5125];
+
 let totalErrors = 0;
 
 function logPass(msg) {
@@ -27,6 +34,23 @@ function logPass(msg) {
 function logFail(msg) {
   console.error(`\x1b[31m✖ FAIL:\x1b[0m ${msg}`);
   totalErrors++;
+}
+
+// Safe Type Check Helpers
+function isObject(val) {
+  return val !== null && typeof val === 'object' && !Array.isArray(val);
+}
+
+function isArray(val) {
+  return Array.isArray(val);
+}
+
+function isInteger(val) {
+  return Number.isInteger(val);
+}
+
+function isFiniteNumber(val) {
+  return typeof val === 'number' && Number.isFinite(val);
 }
 
 console.log('====================================================');
@@ -42,10 +66,8 @@ if (!fs.existsSync(registryFilePath)) {
 } else {
   try {
     const registryContent = fs.readFileSync(registryFilePath, 'utf8');
-    // Extract registry object using Function constructor or regex parsing
     const objectMatch = registryContent.match(/export const GARMENT_REGISTRY[^{]*=([\s\S]*?);\n\nexport const/);
     if (objectMatch && objectMatch[1]) {
-      // Evaluate extracted object in isolated scope
       const evalString = `return ${objectMatch[1]}`;
       garmentRegistry = new Function(evalString)();
       logPass(`Parsed GARMENT_REGISTRY cleanly with ${Object.keys(garmentRegistry).length} registered asset(s).`);
@@ -64,6 +86,11 @@ if (registeredGarmentIds.length === 0) {
 
 registeredGarmentIds.forEach((garmentId) => {
   const config = garmentRegistry[garmentId];
+  if (!isObject(config)) {
+    logFail(`Garment registry entry for "${garmentId}" is not a valid object.`);
+    return;
+  }
+
   console.log(`\n----------------------------------------------------`);
   console.log(`Validating Garment ID: ${garmentId}`);
   console.log(`Declared Name: "${config.name}", Slot: "${config.slot}"`);
@@ -82,7 +109,7 @@ registeredGarmentIds.forEach((garmentId) => {
     logPass(`Valid GarmentSlot union member: "${config.slot}".`);
   }
 
-  if (!config.supportedAvatarIds || !Array.isArray(config.supportedAvatarIds)) {
+  if (!isArray(config.supportedAvatarIds)) {
     logFail('supportedAvatarIds must be an array.');
   } else {
     if (!config.supportedAvatarIds.includes('male') || !config.supportedAvatarIds.includes('female')) {
@@ -90,6 +117,11 @@ registeredGarmentIds.forEach((garmentId) => {
     } else {
       logPass(`Avatar compatibility verified: supports [${config.supportedAvatarIds.join(', ')}].`);
     }
+  }
+
+  if (typeof config.modelUrl !== 'string' || !config.modelUrl) {
+    logFail('modelUrl must be a non-empty string.');
+    return;
   }
 
   const relativeModelPath = config.modelUrl.replace(/^\//, '');
@@ -102,8 +134,15 @@ registeredGarmentIds.forEach((garmentId) => {
   logPass(`Model file exists at ${absoluteModelPath}`);
 
   // --- GLB BINARY & CHUNK VALIDATION ---
-  const buffer = fs.readFileSync(absoluteModelPath);
-  const stats = fs.statSync(absoluteModelPath);
+  let buffer;
+  let stats;
+  try {
+    buffer = fs.readFileSync(absoluteModelPath);
+    stats = fs.statSync(absoluteModelPath);
+  } catch (err) {
+    logFail(`Failed to read model file: ${err.message}`);
+    return;
+  }
 
   if (stats.size < 20) {
     logFail(`File size too small (${stats.size} bytes).`);
@@ -133,6 +172,11 @@ registeredGarmentIds.forEach((garmentId) => {
   }
 
   // First chunk: JSON
+  if (buffer.length < 20) {
+    logFail('GLB container too short to read JSON chunk header.');
+    return;
+  }
+
   const jsonChunkLength = buffer.readUInt32LE(12);
   const jsonChunkType = buffer.readUInt32LE(16);
 
@@ -157,45 +201,60 @@ registeredGarmentIds.forEach((garmentId) => {
     return;
   }
 
-  // Second chunk: BIN (optional in glTF specs, but required for embedded GLB geometry)
+  if (!isObject(gltf)) {
+    logFail('Parsed glTF JSON root is not an object.');
+    return;
+  }
+
+  // Second chunk: BIN
   let binOffset = 20 + jsonChunkLength;
   let binLength = 0;
   if (binOffset < stats.size) {
-    binLength = buffer.readUInt32LE(binOffset);
-    const binType = buffer.readUInt32LE(binOffset + 4);
-    if (binType !== BIN_CHUNK_TYPE) {
-      logFail(`Second chunk type is not BIN: 0x${binType.toString(16)}`);
+    if (binOffset + 8 > stats.size) {
+      logFail('BIN chunk header extends beyond GLB file boundary.');
     } else {
-      if (binOffset + 8 + binLength > stats.size) {
-        logFail(`BIN chunk exceeds total GLB byte length.`);
+      binLength = buffer.readUInt32LE(binOffset);
+      const binType = buffer.readUInt32LE(binOffset + 4);
+      if (binType !== BIN_CHUNK_TYPE) {
+        logFail(`Second chunk type is not BIN: 0x${binType.toString(16)}`);
       } else {
-        logPass(`BIN chunk bounds verified (Offset: ${binOffset + 8}, Length: ${binLength}).`);
+        if (binOffset + 8 + binLength > stats.size) {
+          logFail(`BIN chunk payload exceeds total GLB byte length.`);
+        } else {
+          logPass(`BIN chunk bounds verified (Offset: ${binOffset + 8}, Length: ${binLength}).`);
+        }
       }
     }
   }
 
-  // --- GLTF REFERENCES & INDEX INTEGRITY ---
-  if (!gltf.scenes || gltf.scenes.length === 0) {
-    logFail('glTF missing default scene array.');
+  // --- DEFENSIVE GLTF STRUCTURAL & INDEX VALIDATION ---
+  if (!isArray(gltf.scenes) || gltf.scenes.length === 0) {
+    logFail('glTF missing or invalid scenes array.');
   } else {
     logPass(`glTF contains ${gltf.scenes.length} scene(s).`);
   }
 
-  if (!gltf.nodes || gltf.nodes.length === 0) {
-    logFail('glTF missing node graph.');
+  if (!isArray(gltf.nodes) || gltf.nodes.length === 0) {
+    logFail('glTF missing or invalid nodes array.');
   }
 
-  if (!gltf.meshes || gltf.meshes.length === 0) {
-    logFail('glTF missing meshes array.');
+  if (!isArray(gltf.meshes) || gltf.meshes.length === 0) {
+    logFail('glTF missing or invalid meshes array.');
   } else {
     logPass(`glTF contains ${gltf.meshes.length} mesh(es).`);
   }
 
+  const scenes = isArray(gltf.scenes) ? gltf.scenes : [];
+  const nodes = isArray(gltf.nodes) ? gltf.nodes : [];
+  const meshes = isArray(gltf.meshes) ? gltf.meshes : [];
+  const accessors = isArray(gltf.accessors) ? gltf.accessors : [];
+  const bufferViews = isArray(gltf.bufferViews) ? gltf.bufferViews : [];
+
   // Validate scene -> node references
-  gltf.scenes.forEach((scene, sIdx) => {
-    if (scene.nodes) {
+  scenes.forEach((scene, sIdx) => {
+    if (isObject(scene) && isArray(scene.nodes)) {
       scene.nodes.forEach((nIdx) => {
-        if (nIdx < 0 || nIdx >= gltf.nodes.length) {
+        if (!isInteger(nIdx) || nIdx < 0 || nIdx >= nodes.length) {
           logFail(`Scene ${sIdx} references invalid node index ${nIdx}.`);
         }
       });
@@ -203,9 +262,9 @@ registeredGarmentIds.forEach((garmentId) => {
   });
 
   // Validate node -> mesh references
-  gltf.nodes.forEach((node, nIdx) => {
-    if (node.mesh !== undefined) {
-      if (node.mesh < 0 || node.mesh >= gltf.meshes.length) {
+  nodes.forEach((node, nIdx) => {
+    if (isObject(node) && node.mesh !== undefined) {
+      if (!isInteger(node.mesh) || node.mesh < 0 || node.mesh >= meshes.length) {
         logFail(`Node ${nIdx} references invalid mesh index ${node.mesh}.`);
       }
     }
@@ -219,18 +278,17 @@ registeredGarmentIds.forEach((garmentId) => {
     logPass(`Garment ID "${garmentId}" conforms to canonical naming convention.`);
   }
 
-  // Enforce glTF node / mesh naming
   let nodeNamingValid = false;
   let meshNamingValid = false;
 
-  gltf.nodes.forEach((node) => {
-    if (node.name && node.name.startsWith(canonicalPrefix)) {
+  nodes.forEach((node) => {
+    if (isObject(node) && typeof node.name === 'string' && node.name.startsWith(canonicalPrefix)) {
       nodeNamingValid = true;
     }
   });
 
-  gltf.meshes.forEach((mesh) => {
-    if (mesh.name && mesh.name.startsWith(canonicalPrefix)) {
+  meshes.forEach((mesh) => {
+    if (isObject(mesh) && typeof mesh.name === 'string' && mesh.name.startsWith(canonicalPrefix)) {
       meshNamingValid = true;
     }
   });
@@ -247,80 +305,197 @@ registeredGarmentIds.forEach((garmentId) => {
     logPass(`glTF mesh geometry contains canonical mesh name matching "${canonicalPrefix}*".`);
   }
 
-  // --- GEOMETRY, ACCESSOR & BUFFERVIEW VALIDATION ---
+  // --- PRIMITIVE & GEOMETRY VALIDATION ---
   let totalTriangles = 0;
   let totalVertices = 0;
-  let materialCount = gltf.materials ? gltf.materials.length : 0;
+  let validRenderablePrimitiveCount = 0;
+  let materialCount = isArray(gltf.materials) ? gltf.materials.length : 0;
 
-  gltf.meshes.forEach((mesh, mIdx) => {
-    if (!mesh.primitives || mesh.primitives.length === 0) {
-      logFail(`Mesh ${mIdx} has no primitives.`);
+  meshes.forEach((mesh, mIdx) => {
+    if (!isObject(mesh) || !isArray(mesh.primitives) || mesh.primitives.length === 0) {
+      logFail(`Mesh ${mIdx} has missing or empty primitives array.`);
       return;
     }
 
     mesh.primitives.forEach((primitive, pIdx) => {
-      // Validate POSITION attribute
-      const posAccIdx = primitive.attributes ? primitive.attributes.POSITION : undefined;
-      if (posAccIdx === undefined) {
-        logFail(`Mesh ${mIdx} primitive ${pIdx} missing POSITION attribute.`);
+      if (!isObject(primitive)) {
+        logFail(`Mesh ${mIdx} primitive ${pIdx} is not an object.`);
         return;
       }
 
-      if (posAccIdx < 0 || posAccIdx >= gltf.accessors.length) {
+      // Check primitive mode (default 4 = TRIANGLES)
+      const mode = primitive.mode !== undefined ? primitive.mode : 4;
+      if (mode !== 4) {
+        logFail(`Mesh ${mIdx} primitive ${pIdx} uses unsupported rendering mode ${mode} (Expected 4 = TRIANGLES).`);
+        return;
+      }
+
+      // Validate attributes object
+      if (!isObject(primitive.attributes)) {
+        logFail(`Mesh ${mIdx} primitive ${pIdx} missing or invalid attributes object.`);
+        return;
+      }
+
+      // 1. POSITION Accessor Validation
+      const posAccIdx = primitive.attributes.POSITION;
+      if (!isInteger(posAccIdx) || posAccIdx < 0 || posAccIdx >= accessors.length) {
         logFail(`Mesh ${mIdx} primitive ${pIdx} references invalid POSITION accessor index ${posAccIdx}.`);
         return;
       }
 
-      const posAccessor = gltf.accessors[posAccIdx];
-      if (posAccessor.type !== 'VEC3') {
-        logFail(`POSITION accessor ${posAccIdx} type is "${posAccessor.type}" (Expected "VEC3").`);
-      } else {
-        logPass('POSITION accessor type is VEC3.');
+      const posAccessor = accessors[posAccIdx];
+      if (!isObject(posAccessor)) {
+        logFail(`POSITION accessor ${posAccIdx} is not a valid object.`);
+        return;
       }
 
-      if (posAccessor.count <= 0) {
-        logFail(`POSITION accessor count is non-positive (${posAccessor.count}).`);
+      if (posAccessor.type !== 'VEC3') {
+        logFail(`POSITION accessor ${posAccIdx} type is "${posAccessor.type}" (Expected "VEC3").`);
+        return;
       }
-      totalVertices += posAccessor.count;
+
+      if (posAccessor.componentType !== 5126) {
+        logFail(`POSITION accessor ${posAccIdx} componentType is ${posAccessor.componentType} (Expected 5126 = FLOAT).`);
+        return;
+      }
+
+      if (!isInteger(posAccessor.count) || posAccessor.count <= 0) {
+        logFail(`POSITION accessor ${posAccIdx} count is non-positive (${posAccessor.count}).`);
+        return;
+      }
 
       // Validate bufferView for POSITION accessor
       if (posAccessor.bufferView !== undefined) {
-        if (posAccessor.bufferView < 0 || posAccessor.bufferView >= gltf.bufferViews.length) {
-          logFail(`Accessor ${posAccIdx} references invalid bufferView index ${posAccessor.bufferView}.`);
-        } else {
-          const bv = gltf.bufferViews[posAccessor.bufferView];
-          if (bv.byteOffset + bv.byteLength > binLength) {
-            logFail(`bufferView ${posAccessor.bufferView} range exceeds BIN buffer length.`);
-          }
+        if (!isInteger(posAccessor.bufferView) || posAccessor.bufferView < 0 || posAccessor.bufferView >= bufferViews.length) {
+          logFail(`POSITION accessor ${posAccIdx} references invalid bufferView index ${posAccessor.bufferView}.`);
+          return;
+        }
+
+        const bv = bufferViews[posAccessor.bufferView];
+        if (!isObject(bv)) {
+          logFail(`bufferView ${posAccessor.bufferView} is not a valid object.`);
+          return;
+        }
+
+        const byteOffset = bv.byteOffset !== undefined ? bv.byteOffset : 0;
+        const byteLength = bv.byteLength;
+
+        if (!isInteger(byteOffset) || byteOffset < 0 || !isInteger(byteLength) || byteLength <= 0) {
+          logFail(`bufferView ${posAccessor.bufferView} has invalid byteOffset (${byteOffset}) or byteLength (${byteLength}).`);
+          return;
+        }
+
+        if (byteOffset + byteLength > binLength) {
+          logFail(`bufferView ${posAccessor.bufferView} byte range (${byteOffset} + ${byteLength}) extends beyond BIN buffer length (${binLength}).`);
+          return;
         }
       }
 
       // Validate POSITION min/max bounds
-      if (posAccessor.min && posAccessor.max) {
-        const dx = posAccessor.max[0] - posAccessor.min[0];
-        const dy = posAccessor.max[1] - posAccessor.min[1];
-        const dz = posAccessor.max[2] - posAccessor.min[2];
-
-        if (dx <= 0 || dy <= 0 || dz <= 0) {
-          logFail(`Invalid zero or negative 3D volume dimensions: dx=${dx}, dy=${dy}, dz=${dz}`);
-        } else {
-          logPass(`Non-zero 3D geometry volume verified (dx=${dx.toFixed(2)}, dy=${dy.toFixed(2)}, dz=${dz.toFixed(2)}).`);
-        }
-      } else {
-        logFail(`POSITION accessor missing min/max bounds array.`);
+      if (!isArray(posAccessor.min) || posAccessor.min.length !== 3 || !isArray(posAccessor.max) || posAccessor.max.length !== 3) {
+        logFail(`POSITION accessor ${posAccIdx} missing or invalid min/max 3D bounds array.`);
+        return;
       }
 
-      // Validate INDICES accessor if present
+      const [minX, minY, minZ] = posAccessor.min;
+      const [maxX, maxY, maxZ] = posAccessor.max;
+
+      if (!isFiniteNumber(minX) || !isFiniteNumber(minY) || !isFiniteNumber(minZ) ||
+          !isFiniteNumber(maxX) || !isFiniteNumber(maxY) || !isFiniteNumber(maxZ)) {
+        logFail(`POSITION accessor ${posAccIdx} min/max bounds contain non-finite numbers.`);
+        return;
+      }
+
+      const dx = maxX - minX;
+      const dy = maxY - minY;
+      const dz = maxZ - minZ;
+
+      if (dx <= 0 || dy <= 0 || dz <= 0) {
+        logFail(`POSITION bounds have non-positive volume dimensions: dx=${dx}, dy=${dy}, dz=${dz}`);
+        return;
+      }
+
+      let primitiveTriCount = 0;
+
+      // 2. Indices Accessor Validation (if indexed primitive)
       if (primitive.indices !== undefined) {
-        if (primitive.indices < 0 || primitive.indices >= gltf.accessors.length) {
-          logFail(`Primitive references invalid indices accessor index ${primitive.indices}.`);
-        } else {
-          const idxAccessor = gltf.accessors[primitive.indices];
-          totalTriangles += idxAccessor.count / 3;
+        const idxAccIdx = primitive.indices;
+        if (!isInteger(idxAccIdx) || idxAccIdx < 0 || idxAccIdx >= accessors.length) {
+          logFail(`Mesh ${mIdx} primitive ${pIdx} references invalid indices accessor index ${idxAccIdx}.`);
+          return;
         }
+
+        const idxAccessor = accessors[idxAccIdx];
+        if (!isObject(idxAccessor)) {
+          logFail(`Indices accessor ${idxAccIdx} is not a valid object.`);
+          return;
+        }
+
+        if (idxAccessor.type !== 'SCALAR') {
+          logFail(`Indices accessor ${idxAccIdx} type is "${idxAccessor.type}" (Expected "SCALAR").`);
+          return;
+        }
+
+        if (!VALID_INDEX_COMPONENT_TYPES.includes(idxAccessor.componentType)) {
+          logFail(`Indices accessor ${idxAccIdx} componentType is ${idxAccessor.componentType} (Expected UNSIGNED_BYTE, UNSIGNED_SHORT, or UNSIGNED_INT).`);
+          return;
+        }
+
+        if (!isInteger(idxAccessor.count) || idxAccessor.count <= 0) {
+          logFail(`Indices accessor ${idxAccIdx} count is non-positive (${idxAccessor.count}).`);
+          return;
+        }
+
+        if (idxAccessor.count % 3 !== 0) {
+          logFail(`Indices accessor ${idxAccIdx} count (${idxAccessor.count}) is not divisible by 3 for TRIANGLES mode.`);
+          return;
+        }
+
+        if (idxAccessor.bufferView !== undefined) {
+          if (!isInteger(idxAccessor.bufferView) || idxAccessor.bufferView < 0 || idxAccessor.bufferView >= bufferViews.length) {
+            logFail(`Indices accessor ${idxAccIdx} references invalid bufferView index ${idxAccessor.bufferView}.`);
+            return;
+          }
+
+          const bv = bufferViews[idxAccessor.bufferView];
+          if (!isObject(bv)) {
+            logFail(`Indices bufferView ${idxAccessor.bufferView} is not a valid object.`);
+            return;
+          }
+
+          const byteOffset = bv.byteOffset !== undefined ? bv.byteOffset : 0;
+          const byteLength = bv.byteLength;
+
+          if (!isInteger(byteOffset) || byteOffset < 0 || !isInteger(byteLength) || byteLength <= 0) {
+            logFail(`Indices bufferView ${idxAccessor.bufferView} has invalid byteOffset/byteLength.`);
+            return;
+          }
+
+          if (byteOffset + byteLength > binLength) {
+            logFail(`Indices bufferView ${idxAccessor.bufferView} extends beyond BIN buffer length.`);
+            return;
+          }
+        }
+
+        primitiveTriCount = idxAccessor.count / 3;
+      } else {
+        // Non-indexed primitive calculation
+        primitiveTriCount = posAccessor.count / 3;
       }
+
+      totalVertices += posAccessor.count;
+      totalTriangles += primitiveTriCount;
+      validRenderablePrimitiveCount++;
+      logPass(`Mesh ${mIdx} primitive ${pIdx} validated successfully (${primitiveTriCount} tris, ${posAccessor.count} verts).`);
     });
   });
+
+  // Verify at least one valid renderable primitive was found
+  if (validRenderablePrimitiveCount === 0) {
+    logFail('No valid renderable garment geometry was found.');
+  } else {
+    logPass(`Valid renderable geometry confirmed across ${validRenderablePrimitiveCount} primitive(s).`);
+  }
 
   logPass(`Measured GLB geometry metrics -> Triangles: ${totalTriangles}, Vertices: ${totalVertices}, Materials: ${materialCount}`);
 
