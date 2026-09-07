@@ -12,6 +12,7 @@ export interface ViewerCanvasProps {
   avatarId?: AvatarId;
   showGrid?: boolean;
   activeModelUrl?: string | null;
+  children?: React.ReactNode;
 }
 
 function LoadingFallback() {
@@ -59,7 +60,7 @@ const getClientSnapshot = () => isWebGLAvailable();
 const getServerSnapshot = () => false;
 
 export const ViewerCanvas = forwardRef<CameraControlsRef, ViewerCanvasProps>(
-  ({ className = '', avatarId = 'male', showGrid = true, activeModelUrl = null }, ref) => {
+  ({ className = '', avatarId = 'male', showGrid = true, activeModelUrl = null, children }, ref) => {
     const isSupported = useSyncExternalStore(
       emptySubscribe,
       getClientSnapshot,
@@ -90,7 +91,9 @@ export const ViewerCanvas = forwardRef<CameraControlsRef, ViewerCanvasProps>(
               }}
               style={{ width: '100%', height: '100%' }}
             >
-              <Scene ref={ref} avatarId={avatarId} showGrid={showGrid} activeModelUrl={activeModelUrl} />
+              {children || (
+                <Scene ref={ref} avatarId={avatarId} showGrid={showGrid} activeModelUrl={activeModelUrl} />
+              )}
             </Canvas>
           </Suspense>
         </div>

@@ -1,32 +1,35 @@
-# Third-Party Notices and License Information
+# Third-Party Notices and Open Source Software Attribution
 
-This project relies on open-source software libraries and license-safe 3D assets. Below is a summary of the primary third-party dependencies and media assets used in the project:
+This project incorporates third-party open source software components and 3D assets. The licenses and notices for these components are provided below.
 
-## Software Dependencies
+---
 
-| Package | Version | License | Description / Purpose |
-| :--- | :--- | :--- | :--- |
-| `next` | 16.3.4 | MIT | React Framework for App Router & Server Infrastructure |
-| `react` | 19.2.8 | MIT | Core UI Library |
-| `react-dom` | 19.2.8 | MIT | DOM Rendering Engine for React |
-| `three` | 0.185.1 | MIT | 3D WebGL Rendering Engine |
-| `@react-three/fiber` | 9.7.0 | MIT | React Renderer for Three.js |
-| `@react-three/drei` | 10.7.8 | MIT | Functional helpers and OrbitControls for React Three Fiber |
-| `typescript` | 5.x | Apache-2.0 | Type System and Compiler |
-| `eslint` | 9.x | MIT | Code Quality and Linter |
+## 1. MakeHuman / MPFB2 Base Avatar Models
 
-## 3D Models & Media Assets
+* **Assets:**
+  * `public/models/avatar/male/base-avatar.glb`
+  * `public/models/avatar/female/base-avatar.glb`
+* **Source:** MakeHuman Community / MPFB2 (MakeHuman Plugin for Blender 2)
+* **License:** Creative Commons Zero v1.0 Universal (CC0 1.0)
+* **Notice:** The base human mesh geometry and topologies were generated using the MakeHuman / MPFB2 character generation system and exported for real-time 3D web presentation.
 
-| Asset Name | Path | License | Origin / Author |
-| :--- | :--- | :--- | :--- |
-| Adult Male Base Avatar | `public/models/avatar/male/base-avatar.glb` | CC0 1.0 (Public Domain) | MakeHuman / MPFB2 v2.0.17 (`makehumancommunity`) |
-| Adult Female Base Avatar | `public/models/avatar/female/base-avatar.glb` | CC0 1.0 (Public Domain) | MakeHuman / MPFB2 v2.0.17 (`makehumancommunity`) |
-| `test-cube.glb` | `public/models/test-cube.glb` | MIT / Public Domain | Procedurally generated open-source dev test GLB asset |
+---
 
-## License Compliance & Asset Provenance
+## 2. Test Garment Asset (Basic Short-Sleeve T-Shirt)
 
-1. **Permissive Licensing:** All runtime dependencies, devDependencies, and 3D assets use highly permissive open-source licenses (MIT, Apache-2.0, CC0 1.0).
-2. **Zero Commercial Lock-in:** No proprietary 3D engine SDKs, paid cloud services, or restrictive copyleft dependencies are present in the repository.
-3. **Open 3D Asset Provenance:**
-   - Both Adult Male and Adult Female base avatars are generated using Blender 4.0.2 with MPFB2 v2.0.17 (`makehumancommunity/mpfb2`).
-   - Under official MakeHuman licensing documentation, all exported character base meshes, core body targets, and skeletal armatures are released under **CC0 1.0 Universal Public Domain Dedication**.
+* **Asset:** `public/models/garment/top/GARMENT_top_basic_tshirt.glb`
+* **Authoring Origin:** Authored completely from scratch for this repository to fit the canonical MakeHuman/MPFB2 base adult avatar proportions.
+* **License:** MIT License
+* **Notice:** Copyright (c) 3D Fashion Platform Contributors. Permitted for open-source and commercial platform use under the terms of the MIT License.
+
+---
+
+## 3. NPM Dependencies
+
+The project uses permissively licensed open source npm packages (MIT, Apache-2.0, BSD-3-Clause, ISC):
+
+* `next` (MIT License)
+* `react` / `react-dom` (MIT License)
+* `three` (MIT License)
+* `@react-three/fiber` (MIT License)
+* `@react-three/drei` (MIT License)
