@@ -5,10 +5,11 @@ import { Scene } from './Scene';
 import { ThreeErrorBoundary } from './ThreeErrorBoundary';
 import { isWebGLAvailable } from '@/lib/3d/webgl';
 import { DEFAULT_CAMERA_CONFIG } from '@/lib/3d/constants';
-import { CameraControlsRef } from '@/types/3d';
+import { CameraControlsRef, AvatarId } from '@/types/3d';
 
 export interface ViewerCanvasProps {
   className?: string;
+  avatarId?: AvatarId;
   showGrid?: boolean;
   activeModelUrl?: string | null;
 }
@@ -58,7 +59,7 @@ const getClientSnapshot = () => isWebGLAvailable();
 const getServerSnapshot = () => false;
 
 export const ViewerCanvas = forwardRef<CameraControlsRef, ViewerCanvasProps>(
-  ({ className = '', showGrid = true, activeModelUrl = null }, ref) => {
+  ({ className = '', avatarId = 'male', showGrid = true, activeModelUrl = null }, ref) => {
     const isSupported = useSyncExternalStore(
       emptySubscribe,
       getClientSnapshot,
@@ -89,7 +90,7 @@ export const ViewerCanvas = forwardRef<CameraControlsRef, ViewerCanvasProps>(
               }}
               style={{ width: '100%', height: '100%' }}
             >
-              <Scene ref={ref} showGrid={showGrid} activeModelUrl={activeModelUrl} />
+              <Scene ref={ref} avatarId={avatarId} showGrid={showGrid} activeModelUrl={activeModelUrl} />
             </Canvas>
           </Suspense>
         </div>

@@ -1,6 +1,8 @@
 # Third-Party Notices and License Information
 
-This project relies on open-source software libraries. Below is a summary of the primary third-party dependencies used in Phase 0 and their respective licenses:
+This project relies on open-source software libraries and license-safe 3D assets. Below is a summary of the primary third-party dependencies and media assets used in the project:
+
+## Software Dependencies
 
 | Package | Version | License | Description / Purpose |
 | :--- | :--- | :--- | :--- |
@@ -13,8 +15,18 @@ This project relies on open-source software libraries. Below is a summary of the
 | `typescript` | 5.x | Apache-2.0 | Type System and Compiler |
 | `eslint` | 9.x | MIT | Code Quality and Linter |
 
-## License Compliance Considerations
+## 3D Models & Media Assets
 
-1. **Permissive Licensing:** All runtime dependencies and core devDependencies use highly permissive open-source licenses (MIT or Apache-2.0).
-2. **Zero Commercial Lock-in:** No proprietary 3D engine SDKs, paid cloud services, or restrictive copyleft dependencies (e.g. GPL-3.0) are present in the repository.
-3. **No External Asset Licenses:** The Phase 0 placeholder avatar is procedurally constructed using Three.js geometric primitives, ensuring zero copyright or model licensing obligations.
+| Asset Name | Path | License | Origin / Author |
+| :--- | :--- | :--- | :--- |
+| Adult Male Base Avatar | `public/models/avatar/male/base-avatar.glb` | CC0 1.0 (Public Domain) | MakeHuman / MPFB2 v2.0.17 (`makehumancommunity`) |
+| Adult Female Base Avatar | `public/models/avatar/female/base-avatar.glb` | CC0 1.0 (Public Domain) | MakeHuman / MPFB2 v2.0.17 (`makehumancommunity`) |
+| `test-cube.glb` | `public/models/test-cube.glb` | MIT / Public Domain | Procedurally generated open-source dev test GLB asset |
+
+## License Compliance & Asset Provenance
+
+1. **Permissive Licensing:** All runtime dependencies, devDependencies, and 3D assets use highly permissive open-source licenses (MIT, Apache-2.0, CC0 1.0).
+2. **Zero Commercial Lock-in:** No proprietary 3D engine SDKs, paid cloud services, or restrictive copyleft dependencies are present in the repository.
+3. **Open 3D Asset Provenance:**
+   - Both Adult Male and Adult Female base avatars are generated using Blender 4.0.2 with MPFB2 v2.0.17 (`makehumancommunity/mpfb2`).
+   - Under official MakeHuman licensing documentation, all exported character base meshes, core body targets, and skeletal armatures are released under **CC0 1.0 Universal Public Domain Dedication**.

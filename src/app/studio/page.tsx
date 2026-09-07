@@ -2,10 +2,11 @@
 import React, { useRef, useState } from 'react';
 import Link from 'next/link';
 import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
-import { CameraControlsRef } from '@/types/3d';
+import { CameraControlsRef, AvatarId } from '@/types/3d';
 
 export default function StudioPage() {
   const controlsRef = useRef<CameraControlsRef>(null);
+  const [avatarId, setAvatarId] = useState<AvatarId>('male');
   const [showGrid, setShowGrid] = useState(true);
   const [activeModelUrl, setActiveModelUrl] = useState<string | null>(null);
 
@@ -32,14 +33,18 @@ export default function StudioPage() {
       {/* Top Header */}
       <header style={{
         display: 'flex',
+        flexWrap: 'wrap',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '0.75rem 1.25rem',
+        gap: '0.5rem 1rem',
+        padding: '0.6rem 1rem',
         backgroundColor: '#ffffff',
         borderBottom: '1px solid #e5e5ea',
-        zIndex: 10
+        zIndex: 10,
+        boxSizing: 'border-box',
+        maxHeight: 'none'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <Link
             href="/"
             style={{
@@ -58,11 +63,62 @@ export default function StudioPage() {
         </div>
 
         {/* Action Controls Header Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '0.5rem 0.75rem'
+        }}>
+          {/* Avatar Selector Toggle */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: '#e8e8ed',
+            borderRadius: '6px',
+            padding: '2px'
+          }}>
+            <button
+              onClick={() => setAvatarId('male')}
+              aria-pressed={avatarId === 'male'}
+              style={{
+                padding: '0.35rem 0.75rem',
+                fontSize: '0.825rem',
+                fontWeight: avatarId === 'male' ? 600 : 500,
+                backgroundColor: avatarId === 'male' ? '#ffffff' : 'transparent',
+                color: avatarId === 'male' ? '#1d1d1f' : '#6e6e73',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                boxShadow: avatarId === 'male' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Male
+            </button>
+            <button
+              onClick={() => setAvatarId('female')}
+              aria-pressed={avatarId === 'female'}
+              style={{
+                padding: '0.35rem 0.75rem',
+                fontSize: '0.825rem',
+                fontWeight: avatarId === 'female' ? 600 : 500,
+                backgroundColor: avatarId === 'female' ? '#ffffff' : 'transparent',
+                color: avatarId === 'female' ? '#1d1d1f' : '#6e6e73',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                boxShadow: avatarId === 'female' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Female
+            </button>
+          </div>
+
           <button
             onClick={handleToggleTestModel}
             style={{
-              padding: '0.4rem 0.8rem',
+              padding: '0.4rem 0.75rem',
               fontSize: '0.825rem',
               fontWeight: 500,
               backgroundColor: activeModelUrl ? '#e3f2fd' : '#f2f2f7',
@@ -78,7 +134,7 @@ export default function StudioPage() {
           <button
             onClick={() => setShowGrid((prev) => !prev)}
             style={{
-              padding: '0.4rem 0.8rem',
+              padding: '0.4rem 0.75rem',
               fontSize: '0.825rem',
               fontWeight: 500,
               backgroundColor: showGrid ? '#e8e8ed' : '#f2f2f7',
@@ -94,7 +150,7 @@ export default function StudioPage() {
           <button
             onClick={handleResetCamera}
             style={{
-              padding: '0.4rem 0.8rem',
+              padding: '0.4rem 0.75rem',
               fontSize: '0.825rem',
               fontWeight: 500,
               backgroundColor: '#0071e3',
@@ -113,6 +169,7 @@ export default function StudioPage() {
       <main style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
         <ViewerCanvas
           ref={controlsRef}
+          avatarId={avatarId}
           showGrid={showGrid}
           activeModelUrl={activeModelUrl}
         />
@@ -132,6 +189,7 @@ export default function StudioPage() {
           pointerEvents: 'none',
           boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
         }}>
+          <div><strong>Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}</div>
           <div><strong>Drag / Touch:</strong> Rotate Camera</div>
           <div><strong>Scroll / Pinch:</strong> Zoom</div>
           {activeModelUrl && (
