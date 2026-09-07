@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
 import { Scene } from '@/components/3d/Scene';
 import { CameraControlsRef, AvatarId } from '@/types/3d';
-import styles from '../page.module.css';
+import styles from './studio.module.css';
 
 export default function StudioPage() {
   const [avatarId, setAvatarId] = useState<AvatarId>('male');
@@ -39,10 +39,11 @@ export default function StudioPage() {
         </div>
 
         <div className={styles.controls}>
-          {/* Avatar Switcher */}
+          {/* Avatar Switcher with Accessibility Attributes */}
           <div style={{ display: 'flex', background: '#e5e5ea', borderRadius: '8px', padding: '2px' }}>
             <button
               className={styles.button}
+              aria-pressed={avatarId === 'male'}
               style={{
                 backgroundColor: avatarId === 'male' ? '#ffffff' : 'transparent',
                 boxShadow: avatarId === 'male' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
@@ -54,6 +55,7 @@ export default function StudioPage() {
             </button>
             <button
               className={styles.button}
+              aria-pressed={avatarId === 'female'}
               style={{
                 backgroundColor: avatarId === 'female' ? '#ffffff' : 'transparent',
                 boxShadow: avatarId === 'female' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',

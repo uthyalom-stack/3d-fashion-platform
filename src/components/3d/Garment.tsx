@@ -42,7 +42,19 @@ export function Garment({
     return null;
   }
 
-  // Determine avatar-relative scale normalization
+  // Enforce Avatar Compatibility
+  if (config.supportedAvatarIds && !config.supportedAvatarIds.includes(avatarId)) {
+    console.warn(
+      `[Garment] Incompatible avatar: Garment "${garmentId}" supports [${config.supportedAvatarIds.join(
+        ', '
+      )}], but current avatar is "${avatarId}". Skipping render.`
+    );
+    return null;
+  }
+
+  // Determine scale normalization
+  // Garments authored in MakeHuman decimeter coordinates scale via avatarConfig.scale.
+  // Garments authored in standard meter units specify config.scale (e.g. 1.0) or default to 1.0.
   const avatarConfig = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY.male;
   const targetScale = scale ?? config.scale ?? avatarConfig.scale;
 

@@ -36,11 +36,13 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
           </React.Suspense>
         </ThreeErrorBoundary>
 
-        {/* Active Garment Asset Layer (Phase 3 Garment Pipeline) */}
+        {/* Active Garment Asset Layer (Phase 3 Garment Pipeline Foundation) */}
         {activeGarmentId && (
-          <React.Suspense fallback={null}>
-            <Garment garmentId={activeGarmentId} avatarId={avatarId} />
-          </React.Suspense>
+          <ThreeErrorBoundary fallback={null}>
+            <React.Suspense fallback={null}>
+              <Garment garmentId={activeGarmentId} avatarId={avatarId} />
+            </React.Suspense>
+          </ThreeErrorBoundary>
         )}
 
         {/* Dynamic 3D Asset Loader (Phase 1 Engine Integration) */}

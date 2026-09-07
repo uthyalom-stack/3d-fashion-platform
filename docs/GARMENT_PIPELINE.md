@@ -51,7 +51,15 @@ The platform enforces strict union slot classification (`GarmentSlot` in `src/ty
 
 ---
 
-## 4. Blender Preparation Guidelines
+## 4. Asset Provenance & Licensing Standards
+
+All garments in the repository must have explicit, auditable provenance and licensing:
+* **Provenance:** Authored completely from scratch for this project or derived from an explicitly documented permissive open-source source.
+* **License:** Single, unambiguous permissive license (e.g., `MIT`). Dual/ambiguous license statements (such as `CC0 / MIT`) are disallowed.
+
+---
+
+## 5. Blender Preparation Guidelines
 
 ### Modeling & Topology
 * Model garments directly against the platform base avatar GLB mesh (`/public/models/avatar/male/base-avatar.glb` or female equivalent).
@@ -68,7 +76,7 @@ The platform enforces strict union slot classification (`GarmentSlot` in `src/ty
 
 ---
 
-## 5. Deformation Strategy
+## 6. Deformation Strategy
 
 For Phase 3, the platform uses a **pre-authored static/rigged garment strategy**:
 * Garments are authored specifically against the canonical base avatar proportions in neutral A-Pose.
@@ -77,7 +85,7 @@ For Phase 3, the platform uses a **pre-authored static/rigged garment strategy**
 
 ---
 
-## 6. GLB Export Settings (Blender)
+## 7. GLB Export Settings (Blender)
 
 When exporting the final asset from Blender to `.glb`:
 

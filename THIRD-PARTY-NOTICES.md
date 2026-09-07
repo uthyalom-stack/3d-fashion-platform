@@ -10,7 +10,7 @@ This project incorporates third-party open source software components and 3D ass
   * `public/models/avatar/male/base-avatar.glb`
   * `public/models/avatar/female/base-avatar.glb`
 * **Source:** MakeHuman Community / MPFB2 (MakeHuman Plugin for Blender 2)
-* **License:** Creative Commons Zero v1.0 Universal (CC0 1.0) / Open Source
+* **License:** Creative Commons Zero v1.0 Universal (CC0 1.0)
 * **Notice:** The base human mesh geometry and topologies were generated using the MakeHuman / MPFB2 character generation system and exported for real-time 3D web presentation.
 
 ---
@@ -18,9 +18,9 @@ This project incorporates third-party open source software components and 3D ass
 ## 2. Test Garment Asset (Basic Short-Sleeve T-Shirt)
 
 * **Asset:** `public/models/garment/top/GARMENT_top_basic_tshirt.glb`
-* **Source:** Authored specifically for this project based on standard open-source fashion base meshes.
-* **License:** Creative Commons Zero v1.0 Universal (CC0 1.0) / MIT License
-* **Notice:** Provided for platform testing and demonstration of the garment asset pipeline foundation.
+* **Authoring Origin:** Authored completely from scratch for this repository to fit the canonical MakeHuman/MPFB2 base adult avatar proportions.
+* **License:** MIT License
+* **Notice:** Copyright (c) 3D Fashion Platform Contributors. Permitted for open-source and commercial platform use under the terms of the MIT License.
 
 ---
 
