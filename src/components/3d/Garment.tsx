@@ -60,13 +60,13 @@ export function Garment({
   const targetGarmentScale = scale ?? resolved?.garmentScale ?? 1.0;
   const targetAvatarNormScale = resolved?.avatarNormScale ?? 0.1;
 
-  const targetPosition = useMemo<[number, number, number]>(
-    () => position ?? resolved?.position ?? [0, 0, 0],
-    [position, resolved?.position]
+  const targetLocalPosition = useMemo<[number, number, number]>(
+    () => position ?? resolved?.localPosition ?? [0, 0, 0],
+    [position, resolved?.localPosition]
   );
-  const targetRotation = useMemo<[number, number, number]>(
-    () => rotation ?? resolved?.rotation ?? [0, 0, 0],
-    [rotation, resolved?.rotation]
+  const targetLocalRotation = useMemo<[number, number, number]>(
+    () => rotation ?? resolved?.localRotation ?? [0, 0, 0],
+    [rotation, resolved?.localRotation]
   );
 
   // Real skeletal hierarchy parenting effect (called unconditionally)
@@ -78,8 +78,8 @@ export function Garment({
       const anchorNode = resolveAttachmentAnchor(avatarScene, config.slot, avatarId);
 
       attachGarmentToAnchor(garmentGroup, anchorNode, {
-        position: targetPosition,
-        rotation: targetRotation,
+        localPosition: targetLocalPosition,
+        localRotation: targetLocalRotation,
         garmentScale: targetGarmentScale,
         avatarNormScale: targetAvatarNormScale,
         anchorJoint: anchorNode.name,
@@ -96,8 +96,8 @@ export function Garment({
     config,
     avatarId,
     isCompatible,
-    targetPosition,
-    targetRotation,
+    targetLocalPosition,
+    targetLocalRotation,
     targetGarmentScale,
     targetAvatarNormScale,
   ]);

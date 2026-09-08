@@ -103,7 +103,8 @@ When exporting the final asset from Blender to `.glb`:
 ## 8. Runtime Attachment Contract & Outfit State
 
 * **Strict Primary Joint Anchors**: Attachment anchor resolution strictly requires the canonical primary joint (`spine_02` for `top`, `pelvis` for `bottom`, `foot_l` for `feet`, `spine_01` for `waist`, `hand_r` for `hand`). Secondary joints do NOT replace missing primary joints.
-* **Single Avatar Normalization Scale**: Avatar root normalization scale (0.1) is applied once at the avatar root. Garments parented beneath avatar bones compute bone-local transformation matrices to maintain local scale equal to `garmentScale` (1.0) without double-scaling.
+* **Anchor-Local Transform Contract**: Garment position and rotation offsets are defined directly relative to the resolved primary attachment bone (`anchorNode`). A zero offset `[0,0,0]` aligns the garment origin with the attachment bone.
+* **Scale Inheritance**: Avatar normalization (`0.11`/`0.10`) is applied once at the avatar root. Garments parented under avatar bones inherit avatar scale naturally through the hierarchy, with local scale set directly to `garmentScale` (1.0).
 
 For detailed runtime specifications regarding outfit state management, canonical slot anchors, transform ownership, and object disposal rules, see:
 * **[Garment Attachment & Outfit State System Specification](./GARMENT_ATTACHMENT_SYSTEM.md)**

@@ -53,13 +53,13 @@ export const ATTACHMENT_ANCHORS: Record<GarmentSlot, AttachmentAnchor> = {
 
 /**
  * Calculated final attachment transform resolved for runtime rendering.
- * Explicitly separates avatar normalization scale from garment authored scale.
+ * Defines explicit anchor-local transform offsets relative to the resolved attachment bone.
  */
 export interface ResolvedGarmentTransform {
-  position: [number, number, number];
-  rotation: [number, number, number];
-  garmentScale: number; // Authored local scale multiplier (default 1.0)
-  avatarNormScale: number; // Avatar root normalization scale factor (e.g., 0.1)
+  localPosition: [number, number, number];
+  localRotation: [number, number, number];
+  garmentScale: number; // Authored local scale multiplier relative to bone anchor (default 1.0)
+  avatarNormScale: number; // Avatar root normalization scale factor (e.g., 0.11 / 0.10)
   anchorJoint: string;
 }
 
@@ -114,7 +114,7 @@ export function resolveAttachmentAnchor(
 
 /**
  * Single source of truth for resolving garment attachment transform calculations.
- * Explicitly separates avatar normalization scale from garment authored transform.
+ * Returns anchor-local transform offsets relative to the resolved primary attachment bone.
  */
 export function resolveGarmentTransform(
   garment: GarmentAssetConfig,
@@ -129,25 +129,17 @@ export function resolveGarmentTransform(
 
   const garmentScale = garment.scale ?? 1.0;
 
-  const posOffset = garment.positionOffset || [0, 0, 0];
-  const avatarPosOffset = avatarConfig.positionOffset || [0, 0, 0];
-  const targetPosition: [number, number, number] = [
-    avatarPosOffset[0] + posOffset[0],
-    avatarPosOffset[1] + posOffset[1],
-    avatarPosOffset[2] + posOffset[2],
-  ];
+  const localPosition: [number, number, number] = garment.positionOffset
+    ? [...garment.positionOffset]
+    : [0, 0, 0];
 
-  const rotOffset = garment.rotationOffset || [0, 0, 0];
-  const avatarRotOffset = avatarConfig.rotationOffset || [0, 0, 0];
-  const targetRotation: [number, number, number] = [
-    avatarRotOffset[0] + rotOffset[0],
-    avatarRotOffset[1] + rotOffset[1],
-    avatarRotOffset[2] + rotOffset[2],
-  ];
+  const localRotation: [number, number, number] = garment.rotationOffset
+    ? [...garment.rotationOffset]
+    : [0, 0, 0];
 
   return {
-    position: targetPosition,
-    rotation: targetRotation,
+    localPosition,
+    localRotation,
     garmentScale,
     avatarNormScale,
     anchorJoint: anchor.primaryJoint,
@@ -157,10 +149,8 @@ export function resolveGarmentTransform(
 /**
  * Genuinely attaches a garment Object3D into the avatar's real skeletal bone hierarchy.
  * Reparents the garment into the target bone node (`anchorNode.add(garmentGroup)`) with local transform offsets relative to the bone.
- * Computes bone-local transformation matrix from the avatar-space target world matrix to guarantee:
- *  1. Avatar normalization scale is applied exactly once at avatar root.
- *  2. Garment local scale remains equal to garmentScale (1.0).
- *  3. Reparenting under a scaled bone does not cause double-scaling.
+ * Sets garment local position, rotation, and scale directly relative to the anchor node.
+ * Inherits avatar normalization scale (e.g. 0.11 / 0.10) naturally through the parent bone hierarchy.
  */
 export function attachGarmentToAnchor(
   garmentGroup: THREE.Object3D,
@@ -179,32 +169,20 @@ export function attachGarmentToAnchor(
     anchorNode.add(garmentGroup);
   }
 
-  anchorNode.updateMatrixWorld(true);
+  // Apply anchor-local transforms directly on the garment group
+  garmentGroup.matrixAutoUpdate = true;
 
-  // Derive target world scale in meter space: avatarNormScale * garmentScale
-  const avatarNormScale = transform?.avatarNormScale ?? 0.1;
-  const garmentScale = transform?.garmentScale ?? 1.0;
-  const combinedWorldScale = avatarNormScale * garmentScale;
+  if (transform) {
+    garmentGroup.position.set(...transform.localPosition);
+    garmentGroup.rotation.set(...transform.localRotation);
+    garmentGroup.scale.setScalar(transform.garmentScale);
+  } else {
+    garmentGroup.position.set(0, 0, 0);
+    garmentGroup.rotation.set(0, 0, 0);
+    garmentGroup.scale.setScalar(1.0);
+  }
 
-  const posOffset = transform?.position ?? [0, 0, 0];
-  const rotOffset = transform?.rotation ?? [0, 0, 0];
-
-  const targetWorldMatrix = new THREE.Matrix4();
-  const rotationEuler = new THREE.Euler(rotOffset[0], rotOffset[1], rotOffset[2]);
-  const quaternion = new THREE.Quaternion().setFromEuler(rotationEuler);
-  const positionVec = new THREE.Vector3(posOffset[0], posOffset[1], posOffset[2]);
-  const scaleVec = new THREE.Vector3(combinedWorldScale, combinedWorldScale, combinedWorldScale);
-
-  targetWorldMatrix.compose(positionVec, quaternion, scaleVec);
-
-  // Convert target world matrix into anchorNode local space
-  const parentInverseWorld = anchorNode.matrixWorld.clone().invert();
-  const localMatrix = parentInverseWorld.multiply(targetWorldMatrix);
-
-  garmentGroup.matrixAutoUpdate = false;
-  garmentGroup.matrix.copy(localMatrix);
-  garmentGroup.matrixWorldNeedsUpdate = true;
-
+  garmentGroup.updateMatrix();
   anchorNode.updateMatrixWorld(true);
 }
 

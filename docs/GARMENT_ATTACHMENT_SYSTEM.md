@@ -124,17 +124,28 @@ When switching the active base avatar in Studio (e.g., `male` → `female`):
 
 ---
 
-## 7. Explicit Transform Space Contract & Single Avatar Normalization Scale
+## 7. Explicit Anchor-Local Transform Contract & Scale Inheritance
 
-The platform strictly separates:
-1. **Avatar Root Normalization Scale (`avatarNormScale`)**: Applied exactly once at the avatar root level (`scale = 0.11` for male, `0.10` for female) to normalize decimeter model exports to meters.
-2. **Garment Authored Local Scale (`garmentScale`)**: The garment's authored local scale factor (`garment.scale ?? 1.0`), defaulting to `1.0`.
-3. **Local Bone Space Transformation**: When reparenting `garmentGroup` under `anchorNode` (`spine_02`), `attachGarmentToAnchor` computes the bone's local transformation matrix relative to the parent bone's inverse world matrix:
-   $$M_{boneLocal} = (M_{anchorWorld})^{-1} \times M_{targetWorld}$$
-   This guarantees that:
-   * Avatar normalization scale (`0.1`) is applied exactly once.
-   * Reparenting under a scaled bone does not double-scale the garment (`0.1 * 0.1 = 0.01`).
-   * `garmentGroup` local scale remains equal to `garmentScale` (`1.0`).
+The platform enforces a direct, explicit anchor-local transform contract:
+
+1. **Anchor-Local Coordinate Space**:
+   * All garment position and rotation offsets (`localPosition`, `localRotation`) are defined **directly relative to the resolved primary attachment bone** (`anchorNode`).
+   * A zero local position offset `[0, 0, 0]` means the garment origin coincides directly with the resolved attachment bone (`anchorNode`).
+   * Do NOT interpret garment offsets as world-space coordinates or convert them from a fake world-origin target.
+
+2. **Avatar Normalization & Scale Inheritance**:
+   * Avatar normalization (`scale = 0.11` for male, `0.10` for female) is applied **exactly once at the avatar root level**.
+   * Garments reparented under an avatar bone (`garmentGroup.parent === anchorNode`) inherit the avatar root normalization scale naturally through the Three.js Object3D parent hierarchy.
+   * The garment local scale (`garmentScale`, defaulting to `1.0`) is set directly on `garmentGroup.scale.setScalar(garmentScale)`.
+   * Garment local scale is NOT multiplied by `avatarNormScale` (`0.11` or `0.10`), eliminating double-scaling risks (`0.1 * 0.1 = 0.01`).
+
+3. **Conceptual Scene Hierarchy**:
+   ```text
+   Avatar Root Group (scale = avatarNormScale [0.11 / 0.10])
+     └── Avatar Skeleton (Game Engine Rig)
+           └── spine_02 (Primary Attachment Bone)
+                 └── Garment Group (scale = garmentScale [1.0])
+   ```
 
 Transform resolution is centralized in `resolveGarmentTransform(garment, avatarId)` and `attachGarmentToAnchor`. No component or UI overlay injects arbitrary transform hacks.
 

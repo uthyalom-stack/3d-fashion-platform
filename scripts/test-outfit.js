@@ -287,31 +287,88 @@ function runOutfitTests() {
   );
   console.log('✔ PASS: Missing primary joint strictly failed without silent fallback to secondary joints.');
 
-  // 15b. Single Avatar Normalization Scale & Reparenting Math Check
-  console.log('\nTest 15b: Single Avatar Normalization Scale & Reparenting Math Check');
-  const testAvatarRoot = new THREE.Group();
-  testAvatarRoot.scale.setScalar(0.1); // Avatar normalization scale applied at root
+  // 15b. Non-Origin Anchor Bone Transform Test ([0, 1.25, 0])
+  console.log('\nTest 15b: Non-Origin Anchor Bone Transform Test');
+  const nonOriginAvatarRoot = new THREE.Group();
+  const nonOriginBone = new THREE.Bone();
+  nonOriginBone.name = 'spine_02';
+  nonOriginBone.position.set(0, 1.25, 0); // Bone positioned away from origin
+  nonOriginAvatarRoot.add(nonOriginBone);
+  nonOriginAvatarRoot.updateMatrixWorld(true);
 
-  const testBone = new THREE.Bone();
-  testBone.name = 'spine_02';
-  testAvatarRoot.add(testBone);
-  testAvatarRoot.updateMatrixWorld(true);
+  const zeroOffsetGarmentGroup = new THREE.Group();
+  attachGarmentToAnchor(zeroOffsetGarmentGroup, nonOriginBone, {
+    localPosition: [0, 0, 0],
+    localRotation: [0, 0, 0],
+    garmentScale: 1.0,
+    avatarNormScale: 0.10,
+    anchorJoint: 'spine_02',
+  });
+  nonOriginAvatarRoot.updateMatrixWorld(true);
 
-  const testGarmentGroup = new THREE.Group();
-  attachGarmentToAnchor(testGarmentGroup, testBone, transformMale);
+  const zeroOffsetWorldPos = new THREE.Vector3();
+  zeroOffsetGarmentGroup.getWorldPosition(zeroOffsetWorldPos);
+  assert.strictEqual(zeroOffsetWorldPos.x, 0);
+  assert.strictEqual(zeroOffsetWorldPos.y, 1.25, 'Garment world Y must equal anchor bone world Y [1.25]');
+  assert.strictEqual(zeroOffsetWorldPos.z, 0);
+  console.log('✔ PASS: Zero-offset garment world position matches non-origin anchor bone [0, 1.25, 0].');
 
-  testAvatarRoot.updateMatrixWorld(true);
+  // 15c. Local Offset Test on Non-Origin Anchor
+  console.log('\nTest 15c: Local Offset Test on Non-Origin Anchor');
+  const offsetGarmentGroup = new THREE.Group();
+  attachGarmentToAnchor(offsetGarmentGroup, nonOriginBone, {
+    localPosition: [0, 0.10, 0],
+    localRotation: [0, 0, 0],
+    garmentScale: 1.0,
+    avatarNormScale: 0.10,
+    anchorJoint: 'spine_02',
+  });
+  nonOriginAvatarRoot.updateMatrixWorld(true);
 
-  // Measure world matrix scale of garmentGroup
-  const garmentWorldScale = new THREE.Vector3();
-  testGarmentGroup.getWorldScale(garmentWorldScale);
+  const offsetWorldPos = new THREE.Vector3();
+  offsetGarmentGroup.getWorldPosition(offsetWorldPos);
+  assert.strictEqual(offsetWorldPos.y, 1.35, 'Garment world Y must equal 1.25 + 0.10 = 1.35');
+  console.log('✔ PASS: Local position offset [0, 0.10, 0] added correctly relative to anchor bone.');
 
-  // Target world scale in meter space = avatarNormScale (0.11) * garmentScale (1.0) = 0.11
-  assert.ok(
-    Math.abs(garmentWorldScale.x - 0.11) < 0.0001,
-    `Garment world scale x (${garmentWorldScale.x}) must equal 0.11 without double scaling`
-  );
-  console.log('✔ PASS: Reparenting beneath scaled avatar bone verified without double scaling.');
+  // 15d. Scale Inheritance Test
+  console.log('\nTest 15d: Scale Inheritance Test');
+  const scaledAvatarRoot = new THREE.Group();
+  scaledAvatarRoot.scale.setScalar(0.10); // Avatar root normalization scale
+  const scaledBone = new THREE.Bone();
+  scaledBone.name = 'spine_02';
+  scaledAvatarRoot.add(scaledBone);
+  scaledAvatarRoot.updateMatrixWorld(true);
+
+  // Garment local scale = 1.0
+  const scale1Garment = new THREE.Group();
+  attachGarmentToAnchor(scale1Garment, scaledBone, {
+    localPosition: [0, 0, 0],
+    localRotation: [0, 0, 0],
+    garmentScale: 1.0,
+    avatarNormScale: 0.10,
+    anchorJoint: 'spine_02',
+  });
+  scaledAvatarRoot.updateMatrixWorld(true);
+
+  const worldScale1 = new THREE.Vector3();
+  scale1Garment.getWorldScale(worldScale1);
+  assert.ok(Math.abs(worldScale1.x - 0.10) < 0.0001, 'Garment inherits avatar root scale (0.10 * 1.0 = 0.10)');
+
+  // Garment local scale = 0.5
+  const scaleHalfGarment = new THREE.Group();
+  attachGarmentToAnchor(scaleHalfGarment, scaledBone, {
+    localPosition: [0, 0, 0],
+    localRotation: [0, 0, 0],
+    garmentScale: 0.5,
+    avatarNormScale: 0.10,
+    anchorJoint: 'spine_02',
+  });
+  scaledAvatarRoot.updateMatrixWorld(true);
+
+  const worldScaleHalf = new THREE.Vector3();
+  scaleHalfGarment.getWorldScale(worldScaleHalf);
+  assert.ok(Math.abs(worldScaleHalf.x - 0.05) < 0.0001, 'Garment scale is 0.10 * 0.5 = 0.05');
+  console.log('✔ PASS: Scale inheritance verified cleanly (0.10 * 1.0 = 0.10; 0.10 * 0.5 = 0.05).');
 
   // 16. Real Parent Relationship Check
   console.log('\nTest 16: Parent Relationship Check (garment.parent === anchorNode)');
@@ -363,6 +420,51 @@ function runOutfitTests() {
   assert.strictEqual(resolvedBone.children.includes(garmentAGroup), false);
   assert.strictEqual(femaleBone.children.includes(garmentAGroup), true);
   console.log('✔ PASS: Garment re-parented cleanly from male skeleton to female skeleton on avatar switch.');
+
+  // 20. All 5 Canonical Primary Joints Tested on Non-Origin Bones
+  console.log('\nTest 20: All 5 Canonical Primary Joints Tested on Non-Origin Bones');
+  const multiJointSkeleton = new THREE.Group();
+  multiJointSkeleton.scale.setScalar(0.11);
+
+  const jointsDef = [
+    { slot: 'top', jointName: 'spine_02', pos: [0, 1.2, 0] },
+    { slot: 'bottom', jointName: 'pelvis', pos: [0, 0.8, 0] },
+    { slot: 'feet', jointName: 'foot_l', pos: [-0.15, 0.1, 0] },
+    { slot: 'waist', jointName: 'spine_01', pos: [0, 0.9, 0] },
+    { slot: 'hand', jointName: 'hand_r', pos: [0.4, 1.0, 0] },
+  ];
+
+  jointsDef.forEach(({ slot, jointName, pos }) => {
+    const bone = new THREE.Bone();
+    bone.name = jointName;
+    bone.position.set(...pos);
+    multiJointSkeleton.add(bone);
+  });
+  multiJointSkeleton.updateMatrixWorld(true);
+
+  jointsDef.forEach(({ slot, jointName, pos }) => {
+    const resolved = resolveAttachmentAnchor(multiJointSkeleton, slot, 'male');
+    assert.strictEqual(resolved.name, jointName);
+
+    const garmentGrp = new THREE.Group();
+    attachGarmentToAnchor(garmentGrp, resolved, {
+      localPosition: [0, 0, 0],
+      localRotation: [0, 0, 0],
+      garmentScale: 1.0,
+      avatarNormScale: 0.11,
+      anchorJoint: jointName,
+    });
+    multiJointSkeleton.updateMatrixWorld(true);
+
+    assert.strictEqual(garmentGrp.parent, resolved, `Garment for slot "${slot}" must be parented to bone "${jointName}"`);
+    assert.strictEqual(garmentGrp.position.y, 0, 'Local Y position must be 0 relative to bone');
+
+    const gWorldPos = new THREE.Vector3();
+    garmentGrp.getWorldPosition(gWorldPos);
+    const expectedWorldY = pos[1] * 0.11;
+    assert.ok(Math.abs(gWorldPos.y - expectedWorldY) < 0.0001, `World Y position (${gWorldPos.y}) must equal bone world Y (${expectedWorldY})`);
+  });
+  console.log('✔ PASS: All 5 canonical primary joints verified on non-origin bones.');
 
   console.log('\n====================================================');
   console.log('\x1b[32mSUCCESS: All Outfit State & Attachment Unit Tests Passed!\x1b[0m');
