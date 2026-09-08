@@ -84,7 +84,7 @@ attachGarmentToAnchor(garmentGroup, anchorNode, transform)
 garmentGroup.parent === anchorNode (True)
 ```
 
-### Skeletal Anchor Mapping:
+### Primary Skeletal Anchor Mapping:
 ```typescript
 export const ATTACHMENT_ANCHORS: Record<GarmentSlot, AttachmentAnchor> = {
   top: { slot: 'top', primaryJoint: 'spine_02', secondaryJoints: ['spine_03', 'clavicle_l', 'clavicle_r'] },
@@ -95,14 +95,17 @@ export const ATTACHMENT_ANCHORS: Record<GarmentSlot, AttachmentAnchor> = {
 };
 ```
 
+> **Strict Primary Joint Policy:**
+> Attachment anchor resolution strictly requires the designated `primaryJoint` (e.g., `spine_02` for `top`). Secondary joints are documented purely as reference points for future multi-bone skinned garments and MUST NOT silently replace a missing primary joint in the Phase 4 runtime.
+
 When the avatar rotates, moves, or animates, the attached garment transforms automatically with the avatar skeleton because `garmentGroup.parent === anchorNode`.
 
 ---
 
 ## 5. Controlled Missing Joint Error Handling
 
-If a required skeletal bone (e.g. `spine_02`) cannot be located in the loaded avatar scene graph:
-* `resolveAttachmentAnchor` DOES NOT silently fall back to `(0,0,0)` or arbitrary world coordinates.
+If a required primary skeletal bone (e.g. `spine_02`) cannot be located in the loaded avatar scene graph:
+* `resolveAttachmentAnchor` DOES NOT silently fall back to secondary joints, `(0,0,0)`, or arbitrary world coordinates.
 * It throws an explicit controlled Error:
   ```text
   Attachment Error: Required skeletal joint "spine_02" for slot "top" on avatar "male" was not found in avatar hierarchy.
@@ -121,13 +124,19 @@ When switching the active base avatar in Studio (e.g., `male` → `female`):
 
 ---
 
-## 7. Transform Separation
+## 7. Explicit Transform Space Contract & Single Avatar Normalization Scale
 
 The platform strictly separates:
-* **Attachment**: The skeletal bone where the garment belongs on the avatar skeleton (`spine_02`, `pelvis`, etc.).
-* **Local Transform Metadata**: Legitimate authored local adjustments (`positionOffset`, `rotationOffset`, `scale`).
+1. **Avatar Root Normalization Scale (`avatarNormScale`)**: Applied exactly once at the avatar root level (`scale = 0.11` for male, `0.10` for female) to normalize decimeter model exports to meters.
+2. **Garment Authored Local Scale (`garmentScale`)**: The garment's authored local scale factor (`garment.scale ?? 1.0`), defaulting to `1.0`.
+3. **Local Bone Space Transformation**: When reparenting `garmentGroup` under `anchorNode` (`spine_02`), `attachGarmentToAnchor` computes the bone's local transformation matrix relative to the parent bone's inverse world matrix:
+   $$M_{boneLocal} = (M_{anchorWorld})^{-1} \times M_{targetWorld}$$
+   This guarantees that:
+   * Avatar normalization scale (`0.1`) is applied exactly once.
+   * Reparenting under a scaled bone does not double-scale the garment (`0.1 * 0.1 = 0.01`).
+   * `garmentGroup` local scale remains equal to `garmentScale` (`1.0`).
 
-Transform resolution is centralized in `resolveGarmentTransform(garment, avatarId)`. No component or UI overlay injects arbitrary transform hacks.
+Transform resolution is centralized in `resolveGarmentTransform(garment, avatarId)` and `attachGarmentToAnchor`. No component or UI overlay injects arbitrary transform hacks.
 
 ---
 

@@ -252,37 +252,66 @@ function runOutfitTests() {
   assert.deepStrictEqual(seq1, seq2, 'Identical operation sequence must yield identical output state');
   console.log('✔ PASS: State transitions are completely deterministic.');
 
-  // 13. Attachment Resolver Test
-  console.log('\nTest 13: Attachment Resolver');
+  // 13. Attachment Resolver Test (Transform Contract & Scale Separation)
+  console.log('\nTest 13: Attachment Resolver (Transform Contract & Scale Separation)');
   const transformMale = resolveGarmentTransform(MOCK_REGISTRY.GARMENT_top_shirt, 'male');
-  assert.strictEqual(transformMale.scale, 0.11, 'Male scale factor resolved correctly');
+  assert.strictEqual(transformMale.garmentScale, 1.0, 'Male garment authored scale factor must resolve to 1.0');
+  assert.strictEqual(transformMale.avatarNormScale, 0.11, 'Male avatar normalization scale resolved correctly');
   assert.strictEqual(transformMale.anchorJoint, ATTACHMENT_ANCHORS.top.primaryJoint);
   assert.strictEqual(transformMale.anchorJoint, 'spine_02');
 
   const transformFemale = resolveGarmentTransform(MOCK_REGISTRY.GARMENT_top_shirt, 'female');
-  assert.strictEqual(transformFemale.scale, 0.10, 'Female scale factor resolved correctly');
+  assert.strictEqual(transformFemale.garmentScale, 1.0, 'Female garment authored scale factor must resolve to 1.0');
+  assert.strictEqual(transformFemale.avatarNormScale, 0.10, 'Female avatar normalization scale resolved correctly');
   assert.strictEqual(transformFemale.anchorJoint, 'spine_02');
-  console.log('✔ PASS: Attachment transforms and skeletal anchor points resolved correctly.');
+  console.log('✔ PASS: Attachment transforms and scale factors explicitly separated.');
 
   // --- SKELETAL ATTACHMENT ARCHITECTURE TESTS ---
 
-  // 14. Existing Joint Resolution
-  console.log('\nTest 14: Existing Joint Resolution from Avatar Scene');
+  // 14. Existing Primary Joint Resolution
+  console.log('\nTest 14: Existing Primary Joint Resolution from Avatar Scene');
   const maleSkeleton = createFixtureAvatarSkeleton('male');
   const resolvedBone = resolveAttachmentAnchor(maleSkeleton, 'top', 'male');
   assert.ok(resolvedBone, 'Must resolve a valid bone node');
   assert.strictEqual(resolvedBone.name, 'spine_02', 'Resolved bone name must match canonical primary joint "spine_02"');
-  console.log('✔ PASS: Resolved expected THREE.Bone node from avatar skeleton hierarchy.');
+  console.log('✔ PASS: Resolved expected primary THREE.Bone node from avatar skeleton hierarchy.');
 
-  // 15. Missing Joint Controlled Error Handling
-  console.log('\nTest 15: Missing Joint Controlled Failure');
-  const brokenSkeleton = createFixtureAvatarSkeleton('male', ['spine_02', 'spine_03', 'clavicle_l', 'clavicle_r']);
+  // 15. Strict Primary Joint Failure (Secondary Joints MUST NOT replace missing primary joint)
+  console.log('\nTest 15: Strict Primary Joint Failure');
+  // Skeleton missing primary joint "spine_02", but secondary joints ("spine_03") ARE present
+  const skeletonWithSecondaryOnly = createFixtureAvatarSkeleton('male', ['spine_02']);
   assert.throws(
-    () => resolveAttachmentAnchor(brokenSkeleton, 'top', 'male'),
-    /Attachment Error: Required skeletal joint "spine_02"/,
-    'Must throw explicit controlled Error when required joint is missing'
+    () => resolveAttachmentAnchor(skeletonWithSecondaryOnly, 'top', 'male'),
+    /Attachment Error: Required skeletal joint "spine_02" for slot "top" on avatar "male" was not found/,
+    'Must throw explicit controlled Error when required primary joint is missing, even if secondary joints exist'
   );
-  console.log('✔ PASS: Missing skeletal joint produced controlled Error without uncontrolled crash.');
+  console.log('✔ PASS: Missing primary joint strictly failed without silent fallback to secondary joints.');
+
+  // 15b. Single Avatar Normalization Scale & Reparenting Math Check
+  console.log('\nTest 15b: Single Avatar Normalization Scale & Reparenting Math Check');
+  const testAvatarRoot = new THREE.Group();
+  testAvatarRoot.scale.setScalar(0.1); // Avatar normalization scale applied at root
+
+  const testBone = new THREE.Bone();
+  testBone.name = 'spine_02';
+  testAvatarRoot.add(testBone);
+  testAvatarRoot.updateMatrixWorld(true);
+
+  const testGarmentGroup = new THREE.Group();
+  attachGarmentToAnchor(testGarmentGroup, testBone, transformMale);
+
+  testAvatarRoot.updateMatrixWorld(true);
+
+  // Measure world matrix scale of garmentGroup
+  const garmentWorldScale = new THREE.Vector3();
+  testGarmentGroup.getWorldScale(garmentWorldScale);
+
+  // Target world scale in meter space = avatarNormScale (0.11) * garmentScale (1.0) = 0.11
+  assert.ok(
+    Math.abs(garmentWorldScale.x - 0.11) < 0.0001,
+    `Garment world scale x (${garmentWorldScale.x}) must equal 0.11 without double scaling`
+  );
+  console.log('✔ PASS: Reparenting beneath scaled avatar bone verified without double scaling.');
 
   // 16. Real Parent Relationship Check
   console.log('\nTest 16: Parent Relationship Check (garment.parent === anchorNode)');

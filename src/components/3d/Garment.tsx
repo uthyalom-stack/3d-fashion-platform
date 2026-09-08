@@ -57,7 +57,9 @@ export function Garment({
     [config, avatarId]
   );
 
-  const targetScale = scale ?? resolved?.scale ?? 1.0;
+  const targetGarmentScale = scale ?? resolved?.garmentScale ?? 1.0;
+  const targetAvatarNormScale = resolved?.avatarNormScale ?? 0.1;
+
   const targetPosition = useMemo<[number, number, number]>(
     () => position ?? resolved?.position ?? [0, 0, 0],
     [position, resolved?.position]
@@ -78,7 +80,8 @@ export function Garment({
       attachGarmentToAnchor(garmentGroup, anchorNode, {
         position: targetPosition,
         rotation: targetRotation,
-        scale: targetScale,
+        garmentScale: targetGarmentScale,
+        avatarNormScale: targetAvatarNormScale,
         anchorJoint: anchorNode.name,
       });
 
@@ -88,7 +91,16 @@ export function Garment({
     } catch (err) {
       console.error(`[Garment Attachment Error]`, err);
     }
-  }, [avatarScene, config, avatarId, isCompatible, targetPosition, targetRotation, targetScale]);
+  }, [
+    avatarScene,
+    config,
+    avatarId,
+    isCompatible,
+    targetPosition,
+    targetRotation,
+    targetGarmentScale,
+    targetAvatarNormScale,
+  ]);
 
   if (!config) {
     console.warn(`[Garment] Garment ID "${garmentId}" not found in GARMENT_REGISTRY.`);
