@@ -1,5 +1,28 @@
+const fs = require('fs');
 const assert = require('assert');
 const THREE = require('three');
+const ts = require('typescript');
+
+// Enable direct loading of TypeScript / TSX modules via native node scripts/test-outfit.js
+function loadTsModule(module, filename) {
+  const content = fs.readFileSync(filename, 'utf8');
+  const result = ts.transpileModule(content, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      jsx: ts.JsxEmit ? ts.JsxEmit.React : 2,
+      esModuleInterop: true,
+    },
+  });
+  module._compile(result.outputText, filename);
+}
+
+if (!require.extensions['.ts']) {
+  require.extensions['.ts'] = loadTsModule;
+}
+if (!require.extensions['.tsx']) {
+  require.extensions['.tsx'] = loadTsModule;
+}
 
 const {
   createEmptyOutfitState,
@@ -50,7 +73,11 @@ function createFixtureAvatarSkeleton(avatarId = 'male', missingJoints = []) {
   const spine3Bone = new THREE.Bone();
   spine3Bone.name = 'spine_03';
   if (!missingJoints.includes('spine_03')) {
-    spine2Bone.add(spine3Bone);
+    if (!missingJoints.includes('spine_02')) {
+      spine2Bone.add(spine3Bone);
+    } else {
+      spine1Bone.add(spine3Bone); // Attached directly to spine_01 if spine_02 is omitted
+    }
   }
 
   const footLBone = new THREE.Bone();

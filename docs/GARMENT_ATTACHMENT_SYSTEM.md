@@ -173,4 +173,4 @@ To add a new garment asset to the platform:
 3. **Naming**: Name root object and mesh node `GARMENT_<slot>_<name>` (e.g. `GARMENT_bottom_denim_jeans`).
 4. **Export GLB**: Binary glTF 2.0 with Y-Up enabled to `/public/models/garment/<slot>/`.
 5. **Register Asset**: Add entry to `src/lib/3d/garments.json` with correct `slot`, `supportedAvatarIds`, and measured `metadata` (triCount, vertexCount, materialCount).
-6. **Validate**: Run `node scripts/test-garment.js` and `npx tsx scripts/test-outfit.js`.
+6. **Validate**: Run `node scripts/test-garment.js` and `node scripts/test-outfit.js`.
