@@ -53,12 +53,11 @@ export function Garment({
 
   // Centralized transform resolution
   const resolved = useMemo(
-    () => (config ? resolveGarmentTransform(config, avatarId) : null),
-    [config, avatarId]
+    () => (config ? resolveGarmentTransform(config) : null),
+    [config]
   );
 
   const targetGarmentScale = scale ?? resolved?.garmentScale ?? 1.0;
-  const targetAvatarNormScale = resolved?.avatarNormScale ?? 0.1;
 
   const targetLocalPosition = useMemo<[number, number, number]>(
     () => position ?? resolved?.localPosition ?? [0, 0, 0],
@@ -69,37 +68,35 @@ export function Garment({
     [rotation, resolved?.localRotation]
   );
 
+  // Validate attachment anchor during render so missing primary joint throws a controlled component error
+  // that reaches ThreeErrorBoundary as designed
+  const resolvedAnchorNode = useMemo(() => {
+    if (avatarScene && config && isCompatible) {
+      return resolveAttachmentAnchor(avatarScene, config.slot, avatarId);
+    }
+    return null;
+  }, [avatarScene, config, isCompatible, avatarId]);
+
   // Real skeletal hierarchy parenting effect (called unconditionally)
   useEffect(() => {
     const garmentGroup = garmentGroupRef.current;
-    if (!garmentGroup || !avatarScene || !config || !isCompatible) return;
+    if (!garmentGroup || !resolvedAnchorNode) return;
 
-    try {
-      const anchorNode = resolveAttachmentAnchor(avatarScene, config.slot, avatarId);
+    attachGarmentToAnchor(garmentGroup, resolvedAnchorNode, {
+      localPosition: targetLocalPosition,
+      localRotation: targetLocalRotation,
+      garmentScale: targetGarmentScale,
+      anchorJoint: resolvedAnchorNode.name,
+    });
 
-      attachGarmentToAnchor(garmentGroup, anchorNode, {
-        localPosition: targetLocalPosition,
-        localRotation: targetLocalRotation,
-        garmentScale: targetGarmentScale,
-        avatarNormScale: targetAvatarNormScale,
-        anchorJoint: anchorNode.name,
-      });
-
-      return () => {
-        detachGarmentFromAnchor(garmentGroup);
-      };
-    } catch (err) {
-      console.error(`[Garment Attachment Error]`, err);
-    }
+    return () => {
+      detachGarmentFromAnchor(garmentGroup);
+    };
   }, [
-    avatarScene,
-    config,
-    avatarId,
-    isCompatible,
+    resolvedAnchorNode,
     targetLocalPosition,
     targetLocalRotation,
     targetGarmentScale,
-    targetAvatarNormScale,
   ]);
 
   if (!config) {

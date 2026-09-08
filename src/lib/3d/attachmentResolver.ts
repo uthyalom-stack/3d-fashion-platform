@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { GarmentSlot, GarmentAssetConfig } from '../../types/garment';
 import { AvatarId } from '../../types/3d';
-import { AVATAR_REGISTRY } from '../../components/3d/Avatar';
 
 /**
  * Garment Attachment Anchor Definition
@@ -59,7 +58,6 @@ export interface ResolvedGarmentTransform {
   localPosition: [number, number, number];
   localRotation: [number, number, number];
   garmentScale: number; // Authored local scale multiplier relative to bone anchor (default 1.0)
-  avatarNormScale: number; // Avatar root normalization scale factor (e.g., 0.11 / 0.10)
   anchorJoint: string;
 }
 
@@ -117,16 +115,9 @@ export function resolveAttachmentAnchor(
  * Returns anchor-local transform offsets relative to the resolved primary attachment bone.
  */
 export function resolveGarmentTransform(
-  garment: GarmentAssetConfig,
-  avatarId: AvatarId = 'male'
+  garment: GarmentAssetConfig
 ): ResolvedGarmentTransform {
-  const avatarConfig = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY.male;
   const anchor = ATTACHMENT_ANCHORS[garment.slot] || ATTACHMENT_ANCHORS.top;
-
-  const avatarNormScale = Array.isArray(avatarConfig.scale)
-    ? avatarConfig.scale[0]
-    : avatarConfig.scale;
-
   const garmentScale = garment.scale ?? 1.0;
 
   const localPosition: [number, number, number] = garment.positionOffset
@@ -141,7 +132,6 @@ export function resolveGarmentTransform(
     localPosition,
     localRotation,
     garmentScale,
-    avatarNormScale,
     anchorJoint: anchor.primaryJoint,
   };
 }

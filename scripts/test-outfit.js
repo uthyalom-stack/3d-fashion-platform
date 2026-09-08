@@ -279,19 +279,18 @@ function runOutfitTests() {
   assert.deepStrictEqual(seq1, seq2, 'Identical operation sequence must yield identical output state');
   console.log('✔ PASS: State transitions are completely deterministic.');
 
-  // 13. Attachment Resolver Test (Transform Contract & Scale Separation)
-  console.log('\nTest 13: Attachment Resolver (Transform Contract & Scale Separation)');
+  // 13. Attachment Resolver Test (Anchor-Local Transform Contract)
+  console.log('\nTest 13: Attachment Resolver (Anchor-Local Transform Contract)');
   const transformMale = resolveGarmentTransform(MOCK_REGISTRY.GARMENT_top_shirt, 'male');
   assert.strictEqual(transformMale.garmentScale, 1.0, 'Male garment authored scale factor must resolve to 1.0');
-  assert.strictEqual(transformMale.avatarNormScale, 0.11, 'Male avatar normalization scale resolved correctly');
   assert.strictEqual(transformMale.anchorJoint, ATTACHMENT_ANCHORS.top.primaryJoint);
   assert.strictEqual(transformMale.anchorJoint, 'spine_02');
+  assert.deepStrictEqual(transformMale.localPosition, [0, 0, 0], 'Default localPosition must resolve to [0,0,0]');
 
   const transformFemale = resolveGarmentTransform(MOCK_REGISTRY.GARMENT_top_shirt, 'female');
   assert.strictEqual(transformFemale.garmentScale, 1.0, 'Female garment authored scale factor must resolve to 1.0');
-  assert.strictEqual(transformFemale.avatarNormScale, 0.10, 'Female avatar normalization scale resolved correctly');
   assert.strictEqual(transformFemale.anchorJoint, 'spine_02');
-  console.log('✔ PASS: Attachment transforms and scale factors explicitly separated.');
+  console.log('✔ PASS: Attachment transforms resolved cleanly to anchor-local properties.');
 
   // --- SKELETAL ATTACHMENT ARCHITECTURE TESTS ---
 
@@ -328,7 +327,6 @@ function runOutfitTests() {
     localPosition: [0, 0, 0],
     localRotation: [0, 0, 0],
     garmentScale: 1.0,
-    avatarNormScale: 0.10,
     anchorJoint: 'spine_02',
   });
   nonOriginAvatarRoot.updateMatrixWorld(true);
@@ -347,7 +345,6 @@ function runOutfitTests() {
     localPosition: [0, 0.10, 0],
     localRotation: [0, 0, 0],
     garmentScale: 1.0,
-    avatarNormScale: 0.10,
     anchorJoint: 'spine_02',
   });
   nonOriginAvatarRoot.updateMatrixWorld(true);
@@ -372,7 +369,6 @@ function runOutfitTests() {
     localPosition: [0, 0, 0],
     localRotation: [0, 0, 0],
     garmentScale: 1.0,
-    avatarNormScale: 0.10,
     anchorJoint: 'spine_02',
   });
   scaledAvatarRoot.updateMatrixWorld(true);
@@ -387,7 +383,6 @@ function runOutfitTests() {
     localPosition: [0, 0, 0],
     localRotation: [0, 0, 0],
     garmentScale: 0.5,
-    avatarNormScale: 0.10,
     anchorJoint: 'spine_02',
   });
   scaledAvatarRoot.updateMatrixWorld(true);
@@ -478,7 +473,6 @@ function runOutfitTests() {
       localPosition: [0, 0, 0],
       localRotation: [0, 0, 0],
       garmentScale: 1.0,
-      avatarNormScale: 0.11,
       anchorJoint: jointName,
     });
     multiJointSkeleton.updateMatrixWorld(true);
@@ -492,6 +486,24 @@ function runOutfitTests() {
     assert.ok(Math.abs(gWorldPos.y - expectedWorldY) < 0.0001, `World Y position (${gWorldPos.y}) must equal bone world Y (${expectedWorldY})`);
   });
   console.log('✔ PASS: All 5 canonical primary joints verified on non-origin bones.');
+
+  // 21. Real T-Shirt Asset Verification
+  console.log('\nTest 21: Real T-Shirt Asset Verification');
+  const tshirtGlbPath = 'public/models/garment/top/GARMENT_top_basic_tshirt.glb';
+  assert.ok(fs.existsSync(tshirtGlbPath), 'GARMENT_top_basic_tshirt.glb must exist on disk');
+
+  const tshirtBuf = fs.readFileSync(tshirtGlbPath);
+  assert.ok(tshirtBuf.length > 0, 'GARMENT_top_basic_tshirt.glb must not be empty');
+
+  // Parse GLB header and verify bone-local bounds
+  const jsonLen = tshirtBuf.readUInt32LE(12);
+  const jsonStr = tshirtBuf.toString('utf8', 20, 20 + jsonLen);
+  const tshirtGlTF = JSON.parse(jsonStr);
+
+  const posAccessor = tshirtGlTF.accessors[0];
+  assert.ok(posAccessor.min[1] < 0 && posAccessor.min[1] > -5, 'T-shirt local Y min must be centered around bone origin [0,0,0]');
+  assert.ok(posAccessor.max[1] > 0 && posAccessor.max[1] < 5, 'T-shirt local Y max must be centered around bone origin [0,0,0]');
+  console.log(`✔ PASS: Real T-shirt GLB asset bounds verified as bone-local: Min ${JSON.stringify(posAccessor.min)}, Max ${JSON.stringify(posAccessor.max)}.`);
 
   console.log('\n====================================================');
   console.log('\x1b[32mSUCCESS: All Outfit State & Attachment Unit Tests Passed!\x1b[0m');
