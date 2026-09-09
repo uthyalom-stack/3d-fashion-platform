@@ -5,13 +5,31 @@ import Link from 'next/link';
 import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
 import { Scene } from '@/components/3d/Scene';
 import { CameraControlsRef, AvatarId } from '@/types/3d';
+import { GarmentSlot, OutfitState, CANONICAL_GARMENT_SLOTS } from '@/types/garment';
+import { OutfitManager, createEmptyOutfitState } from '@/lib/3d/outfitManager';
+import { GARMENT_REGISTRY, DEFAULT_GARMENT_ID } from '@/lib/3d/garmentRegistry';
 import styles from './studio.module.css';
+
+function getInitialOutfitState(): OutfitState {
+  return {
+    ...createEmptyOutfitState(),
+    top: DEFAULT_GARMENT_ID,
+  };
+}
 
 export default function StudioPage() {
   const [avatarId, setAvatarId] = useState<AvatarId>('male');
   const [showGrid, setShowGrid] = useState<boolean>(true);
-  const [activeGarmentId, setActiveGarmentId] = useState<string | null>('GARMENT_top_basic_tshirt');
   const [activeModelUrl, setActiveModelUrl] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Initialize Outfit Manager instance lazily
+  const [outfitManager] = useState<OutfitManager>(
+    () => new OutfitManager('male', getInitialOutfitState())
+  );
+
+  const [outfitState, setOutfitState] = useState<OutfitState>(getInitialOutfitState);
+
   const cameraControlsRef = useRef<CameraControlsRef>(null);
 
   const handleResetCamera = () => {
@@ -24,8 +42,53 @@ export default function StudioPage() {
     setActiveModelUrl((prev) => (prev ? null : '/models/test-cube.glb'));
   };
 
-  const handleToggleGarment = () => {
-    setActiveGarmentId((prev) => (prev ? null : 'GARMENT_top_basic_tshirt'));
+  const handleAvatarChange = (newAvatarId: AvatarId) => {
+    setAvatarId(newAvatarId);
+    const { state: newOutfitState, removedGarments } = outfitManager.setAvatarId(newAvatarId);
+    setOutfitState(newOutfitState);
+
+    if (removedGarments.length > 0) {
+      const removedNames = removedGarments
+        .map((g) => GARMENT_REGISTRY[g.garmentId]?.name || g.garmentId)
+        .join(', ');
+      setStatusMessage(`Auto-unequipped incompatible garment(s) for ${newAvatarId}: ${removedNames}`);
+    } else {
+      setStatusMessage(`Switched active avatar to ${newAvatarId}.`);
+    }
+  };
+
+  const handleToggleTopGarment = () => {
+    const currentTop = outfitManager.get('top');
+
+    if (currentTop) {
+      outfitManager.unequip('top');
+      setOutfitState(outfitManager.getOutfitState());
+      setStatusMessage('Unequipped top garment.');
+    } else {
+      const result = outfitManager.equip('top', DEFAULT_GARMENT_ID);
+      if (result.valid) {
+        setOutfitState(outfitManager.getOutfitState());
+        setStatusMessage(`Equipped ${GARMENT_REGISTRY[DEFAULT_GARMENT_ID]?.name || DEFAULT_GARMENT_ID}`);
+      } else {
+        setStatusMessage(`Equip failed: ${result.error}`);
+      }
+    }
+  };
+
+  const handleReplaceTopGarment = () => {
+    const result = outfitManager.replace('top', DEFAULT_GARMENT_ID);
+    if (result.valid) {
+      setOutfitState(outfitManager.getOutfitState());
+      setStatusMessage(`Replaced top garment with ${GARMENT_REGISTRY[DEFAULT_GARMENT_ID]?.name || DEFAULT_GARMENT_ID}`);
+    } else {
+      setStatusMessage(`Replace failed: ${result.error}`);
+    }
+  };
+
+  const handleUnequipSlot = (slot: GarmentSlot) => {
+    outfitManager.unequip(slot);
+    setOutfitState(outfitManager.getOutfitState());
+    setStatusMessage(`Unequipped garment from slot "${slot}".`);
   };
 
   return (
@@ -39,7 +102,7 @@ export default function StudioPage() {
         </div>
 
         <div className={styles.controls}>
-          {/* Avatar Switcher with Accessibility Attributes */}
+          {/* Avatar Switcher */}
           <div style={{ display: 'flex', background: '#e5e5ea', borderRadius: '8px', padding: '2px' }}>
             <button
               className={styles.button}
@@ -49,7 +112,7 @@ export default function StudioPage() {
                 boxShadow: avatarId === 'male' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                 padding: '0.4rem 0.8rem',
               }}
-              onClick={() => setAvatarId('male')}
+              onClick={() => handleAvatarChange('male')}
             >
               Male
             </button>
@@ -61,23 +124,31 @@ export default function StudioPage() {
                 boxShadow: avatarId === 'female' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                 padding: '0.4rem 0.8rem',
               }}
-              onClick={() => setAvatarId('female')}
+              onClick={() => handleAvatarChange('female')}
             >
               Female
             </button>
           </div>
 
-          {/* Garment Toggle Control (Phase 3 Developer Control) */}
+          {/* Top Slot Controls (Phase 4 Outfit State Operations) */}
           <button
             className={styles.button}
-            onClick={handleToggleGarment}
+            onClick={handleToggleTopGarment}
             style={{
-              borderColor: activeGarmentId ? '#34c759' : '#d1d1d6',
-              color: activeGarmentId ? '#248a3d' : '#1c1c1e',
-              backgroundColor: activeGarmentId ? '#eafda6' : '#ffffff',
+              borderColor: outfitState.top ? '#34c759' : '#d1d1d6',
+              color: outfitState.top ? '#248a3d' : '#1c1c1e',
+              backgroundColor: outfitState.top ? '#eafda6' : '#ffffff',
             }}
           >
-            {activeGarmentId ? 'Remove Garment (T-Shirt)' : 'Equip Garment (T-Shirt)'}
+            {outfitState.top ? 'Remove Top Garment' : 'Equip Top Garment'}
+          </button>
+
+          <button
+            className={styles.button}
+            onClick={handleReplaceTopGarment}
+            style={{ borderColor: '#0071e3', color: '#0071e3' }}
+          >
+            Replace Top
           </button>
 
           {/* Test Asset Loader Toggle */}
@@ -114,7 +185,7 @@ export default function StudioPage() {
             avatarId={avatarId}
             showGrid={showGrid}
             activeModelUrl={activeModelUrl}
-            activeGarmentId={activeGarmentId}
+            outfitState={outfitState}
           />
         </ViewerCanvas>
 
@@ -123,10 +194,59 @@ export default function StudioPage() {
           <div>
             <strong>Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
           </div>
-          <div>
-            <strong>Garment:</strong> {activeGarmentId ? 'Basic Short-Sleeve T-Shirt' : 'None'}
+
+          <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e5e5ea', paddingTop: '0.5rem' }}>
+            <strong>Active Outfit State:</strong>
+            <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.2rem', fontSize: '0.8rem' }}>
+              {CANONICAL_GARMENT_SLOTS.map((slot) => {
+                const equippedId = outfitState[slot];
+                const itemConfig = equippedId ? GARMENT_REGISTRY[equippedId] : null;
+
+                return (
+                  <li key={slot} style={{ marginBottom: '0.2rem' }}>
+                    <span style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>{slot}:</span>{' '}
+                    {equippedId ? (
+                      <span>
+                        {itemConfig?.name || equippedId}{' '}
+                        <button
+                          onClick={() => handleUnequipSlot(slot)}
+                          style={{
+                            fontSize: '0.7rem',
+                            padding: '1px 4px',
+                            marginLeft: '4px',
+                            cursor: 'pointer',
+                            borderRadius: '3px',
+                            border: '1px solid #ccc',
+                          }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ) : (
+                      <span style={{ color: '#8e8e93' }}>[Empty]</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', color: '#8e8e93' }}>
+
+          {statusMessage && (
+            <div
+              style={{
+                marginTop: '0.5rem',
+                fontSize: '0.75rem',
+                color: '#0071e3',
+                background: '#eef6ff',
+                padding: '4px 8px',
+                borderRadius: '4px',
+              }}
+            >
+              {statusMessage}
+            </div>
+          )}
+
+          <div style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: '#8e8e93' }}>
             Drag / Touch: Rotate Camera
             <br />
             Scroll / Pinch: Zoom

@@ -81,7 +81,6 @@ function runOwnershipTests() {
   console.log('✓ PASS: Unmounting shallow-cloned instance leaves cached GPU allocations intact');
 
   // TEST 3: React Strict Mode Lifecycle Replay Simulation for deepCloneMaterials = true
-  // In React Strict Mode, setup -> cleanup -> setup runs on the same mounted scene graph.
   const instanceStrict = cachedScene.clone(true);
   const meshStrict = instanceStrict.children[0];
 
@@ -119,6 +118,27 @@ function runOwnershipTests() {
   assert.strictEqual(cachedMaterialDisposed, false, 'Cached material remains intact after final unmount');
   assert.strictEqual(geometryDisposed, false, 'Cached geometry remains intact after final unmount');
   console.log('✓ PASS: React Strict Mode lifecycle setup->cleanup->setup replay handles material cloning safely');
+
+  // TEST 4: Garment Replacement Lifecycle (Garment A replaced by Garment B)
+  const garmentA_Scene = new THREE.Scene();
+  const garmentA_Geom = new THREE.SphereGeometry(1, 8, 8);
+  const garmentA_Mat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  garmentA_Scene.add(new THREE.Mesh(garmentA_Geom, garmentA_Mat));
+
+  let garmentA_GeomDisposed = false;
+  let garmentA_MatDisposed = false;
+  garmentA_Geom.addEventListener('dispose', () => { garmentA_GeomDisposed = true; });
+  garmentA_Mat.addEventListener('dispose', () => { garmentA_MatDisposed = true; });
+
+  // Equip Garment A
+  const garmentA_Instance = garmentA_Scene.clone(true);
+
+  // Replace Garment A with Garment B -> Unmount Garment A
+  dispose3DObject(garmentA_Instance, { disposeGeometries: false, disposeMaterials: false, disposeTextures: false });
+
+  assert.strictEqual(garmentA_GeomDisposed, false, 'Replacing Garment A must NOT dispose cached geometry');
+  assert.strictEqual(garmentA_MatDisposed, false, 'Replacing Garment A must NOT dispose cached material');
+  console.log('✓ PASS: Garment replacement lifecycle safely unmounts previous object while keeping cached GLTF resources intact');
 
   console.log('--- ALL THREE.JS RESOURCE OWNERSHIP TESTS PASSED SUCCESSFULLY ---');
 }

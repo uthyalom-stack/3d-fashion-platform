@@ -1,14 +1,21 @@
 'use client';
 
-import React from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
+import * as THREE from 'three';
 import { ModelLoader } from './ModelLoader';
-import { GARMENT_REGISTRY } from '@/lib/3d/garmentRegistry';
-import { AVATAR_REGISTRY } from './Avatar';
-import { AvatarId } from '@/types/3d';
+import { GARMENT_REGISTRY } from '../../lib/3d/garmentRegistry';
+import {
+  resolveGarmentTransform,
+  resolveAttachmentAnchor,
+  attachGarmentToAnchor,
+  detachGarmentFromAnchor,
+} from '../../lib/3d/attachmentResolver';
+import { AvatarId } from '../../types/3d';
 
 export interface GarmentProps {
   garmentId: string;
   avatarId?: AvatarId;
+  avatarScene?: THREE.Object3D | null;
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: number;
@@ -19,15 +26,16 @@ export interface GarmentProps {
 
 /**
  * Reusable Garment Component
- * Loads and displays a 3D garment asset aligned to the target base avatar.
- * Reuses the Phase 1 ModelLoader, ensuring proper Three.js resource disposal & ownership.
+ * Loads and attaches a 3D garment asset into the avatar's real skeletal bone hierarchy.
+ * Reuses the Phase 1 ModelLoader and attachment resolver for transform and parenting ownership.
  *
  * ARCHITECTURE:
- * Scene -> Garment -> ModelLoader -> useGLTF
+ * Scene -> Garment -> attachGarmentToAnchor -> THREE.Bone -> ModelLoader -> useGLTF
  */
 export function Garment({
   garmentId,
   avatarId = 'male',
+  avatarScene,
   position,
   rotation,
   scale,
@@ -35,7 +43,61 @@ export function Garment({
   receiveShadow = true,
   onLoad,
 }: GarmentProps) {
+  const garmentGroupRef = useRef<THREE.Group>(null);
   const config = GARMENT_REGISTRY[garmentId];
+
+  // Resolve config and compatibility checks
+  const isCompatible = Boolean(
+    config && (!config.supportedAvatarIds || config.supportedAvatarIds.includes(avatarId))
+  );
+
+  // Centralized transform resolution
+  const resolved = useMemo(
+    () => (config ? resolveGarmentTransform(config) : null),
+    [config]
+  );
+
+  const targetGarmentScale = scale ?? resolved?.garmentScale ?? 1.0;
+
+  const targetLocalPosition = useMemo<[number, number, number]>(
+    () => position ?? resolved?.localPosition ?? [0, 0, 0],
+    [position, resolved?.localPosition]
+  );
+  const targetLocalRotation = useMemo<[number, number, number]>(
+    () => rotation ?? resolved?.localRotation ?? [0, 0, 0],
+    [rotation, resolved?.localRotation]
+  );
+
+  // Validate attachment anchor during render so missing primary joint throws a controlled component error
+  // that reaches ThreeErrorBoundary as designed
+  const resolvedAnchorNode = useMemo(() => {
+    if (avatarScene && config && isCompatible) {
+      return resolveAttachmentAnchor(avatarScene, config.slot, avatarId);
+    }
+    return null;
+  }, [avatarScene, config, isCompatible, avatarId]);
+
+  // Real skeletal hierarchy parenting effect (called unconditionally)
+  useEffect(() => {
+    const garmentGroup = garmentGroupRef.current;
+    if (!garmentGroup || !resolvedAnchorNode) return;
+
+    attachGarmentToAnchor(garmentGroup, resolvedAnchorNode, {
+      localPosition: targetLocalPosition,
+      localRotation: targetLocalRotation,
+      garmentScale: targetGarmentScale,
+      anchorJoint: resolvedAnchorNode.name,
+    });
+
+    return () => {
+      detachGarmentFromAnchor(garmentGroup);
+    };
+  }, [
+    resolvedAnchorNode,
+    targetLocalPosition,
+    targetLocalRotation,
+    targetGarmentScale,
+  ]);
 
   if (!config) {
     console.warn(`[Garment] Garment ID "${garmentId}" not found in GARMENT_REGISTRY.`);
@@ -43,7 +105,7 @@ export function Garment({
   }
 
   // Enforce Avatar Compatibility
-  if (config.supportedAvatarIds && !config.supportedAvatarIds.includes(avatarId)) {
+  if (!isCompatible) {
     console.warn(
       `[Garment] Incompatible avatar: Garment "${garmentId}" supports [${config.supportedAvatarIds.join(
         ', '
@@ -52,27 +114,14 @@ export function Garment({
     return null;
   }
 
-  // Determine scale normalization
-  // Garments authored in MakeHuman decimeter coordinates scale via avatarConfig.scale.
-  // Garments authored in standard meter units specify config.scale (e.g. 1.0) or default to 1.0.
-  const avatarConfig = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY.male;
-  const targetScale = scale ?? config.scale ?? avatarConfig.scale;
-
-  const targetPosition: [number, number, number] = position
-    ? position
-    : config.positionOffset ?? avatarConfig.positionOffset;
-
-  const targetRotation: [number, number, number] = rotation
-    ? rotation
-    : config.rotationOffset ?? avatarConfig.rotationOffset;
-
   return (
-    <group name={`garment-root-${config.id}`} key={`${config.id}-${avatarId}`}>
+    <group
+      ref={garmentGroupRef}
+      name={`garment-root-${config.id}`}
+      key={`${config.id}-${avatarId}`}
+    >
       <ModelLoader
         url={config.modelUrl}
-        position={targetPosition}
-        rotation={targetRotation}
-        scale={targetScale}
         castShadow={castShadow}
         receiveShadow={receiveShadow}
         onLoad={onLoad}
