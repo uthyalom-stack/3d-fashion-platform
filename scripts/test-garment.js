@@ -31,6 +31,7 @@ if (!require.extensions['.tsx']) {
 }
 
 const { GARMENT_REGISTRY } = require('../src/lib/3d/garmentRegistry');
+const { resolveAssetId } = require('../src/lib/3d/assetRegistry');
 
 const GLB_HEADER_MAGIC = 0x46546c67; // 'glTF'
 const JSON_CHUNK_TYPE = 0x4e4f534a; // 'JSON'
@@ -229,10 +230,10 @@ registeredGarmentIds.forEach((garmentId) => {
   console.log(`Declared Name: "${config.name}", Slot: "${config.slot}"`);
 
   // --- REGISTRY BASIC CONTRACT VALIDATION ---
-  if (config.id !== garmentId) {
-    logFail(`Registry key "${garmentId}" does not match internal id field "${config.id}".`);
+  if (resolveAssetId(garmentId) !== config.id) {
+    logFail(`Registry key "${garmentId}" does not resolve to internal id field "${config.id}".`);
   } else {
-    logPass('Registry key matches internal asset ID.');
+    logPass('Registry key matches internal asset ID or resolved alias.');
   }
 
   const validSlots = ['top', 'bottom', 'feet', 'waist', 'hand'];

@@ -1,5 +1,6 @@
 import { Platform3DAsset, Garment3DAsset, Avatar3DAsset, AssetType } from '../../types/asset';
 import { CANONICAL_GARMENT_SLOTS } from '../../types/garment';
+import { validateAssetLocation } from './assetDelivery';
 
 export interface ValidationResult {
   valid: boolean;
@@ -59,6 +60,14 @@ export function validateAsset(
   // 4. Model URL
   if (!asset.modelUrl || typeof asset.modelUrl !== 'string' || asset.modelUrl.trim() === '') {
     errors.push('Asset modelUrl must be a non-empty string.');
+  }
+
+  // 4b. Asset Location (Phase 6 Storage & Delivery Contract)
+  if (asset.location) {
+    const locResult = validateAssetLocation(asset.location);
+    if (!locResult.valid) {
+      errors.push(...locResult.errors.map((e) => `Asset "${asset.assetId}" location error: ${e}`));
+    }
   }
 
   // 5. Schema & Version

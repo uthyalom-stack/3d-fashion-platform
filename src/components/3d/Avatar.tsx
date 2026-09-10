@@ -5,6 +5,7 @@ import { Object3D } from 'three';
 import { ModelLoader } from './ModelLoader';
 import { AvatarProps, AvatarId, AvatarConfig } from '../../types/3d';
 import { getAvatarAsset } from '../../lib/3d/assetRegistry';
+import { resolveAssetUrl } from '../../lib/3d/assetDelivery';
 
 /**
  * DERIVED COMPATIBILITY ADAPTER
@@ -18,7 +19,7 @@ function buildAvatarRegistry(): Record<AvatarId, AvatarConfig> {
     male: {
       id: 'male',
       name: maleAsset?.displayName || 'Adult Male Avatar',
-      modelUrl: maleAsset?.modelUrl || '/models/avatar/male/base-avatar.glb',
+      modelUrl: maleAsset ? resolveAssetUrl(maleAsset) : '/models/avatar/male/base-avatar.glb',
       scale: maleAsset?.scale ?? 0.11,
       positionOffset: maleAsset?.positionOffset || [0, 0, 0],
       rotationOffset: maleAsset?.rotationOffset || [0, 0, 0],
@@ -27,7 +28,7 @@ function buildAvatarRegistry(): Record<AvatarId, AvatarConfig> {
     female: {
       id: 'female',
       name: femaleAsset?.displayName || 'Adult Female Avatar',
-      modelUrl: femaleAsset?.modelUrl || '/models/avatar/female/base-avatar.glb',
+      modelUrl: femaleAsset ? resolveAssetUrl(femaleAsset) : '/models/avatar/female/base-avatar.glb',
       scale: femaleAsset?.scale ?? 0.10,
       positionOffset: femaleAsset?.positionOffset || [0, 0, 0],
       rotationOffset: femaleAsset?.rotationOffset || [0, 0, 0],
@@ -54,7 +55,7 @@ export interface ExtendedAvatarProps extends AvatarProps {
  * Encapsulates MakeHuman / MPFB2 assets and passes loaded skeletal scene tree for garment attachment.
  *
  * ARCHITECTURE & FLOW:
- * Scene -> Avatar (resolves avatarId) -> ModelLoader -> useGLTF -> GLB
+ * Scene -> Avatar (resolves avatarId) -> AssetDeliveryResolver -> ModelLoader -> useGLTF -> GLB
  */
 export function Avatar({
   avatarId = DEFAULT_AVATAR_ID,
@@ -72,7 +73,8 @@ export function Avatar({
   // Resolve configuration from registry
   const config = AVATAR_REGISTRY[avatarId] || AVATAR_REGISTRY[DEFAULT_AVATAR_ID];
 
-  const resolvedUrl = modelUrl || config.modelUrl;
+  const rawUrl = modelUrl || config.modelUrl;
+  const resolvedUrl = resolveAssetUrl(rawUrl);
   const resolvedScale = scale !== undefined ? scale : config.scale;
 
   const resolvedPosition: [number, number, number] = position
@@ -136,13 +138,13 @@ export function Avatar({
 Avatar.preload = (avatarId: AvatarId = DEFAULT_AVATAR_ID) => {
   const config = AVATAR_REGISTRY[avatarId];
   if (config) {
-    ModelLoader.preload(config.modelUrl);
+    ModelLoader.preload(resolveAssetUrl(config.modelUrl));
   }
 };
 
 // Preload all registered avatars helper
 Avatar.preloadAll = () => {
   Object.values(AVATAR_REGISTRY).forEach((config) => {
-    ModelLoader.preload(config.modelUrl);
+    ModelLoader.preload(resolveAssetUrl(config.modelUrl));
   });
 };

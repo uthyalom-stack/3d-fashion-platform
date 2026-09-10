@@ -7,6 +7,21 @@ import { AvatarId } from './3d';
 export type AssetType = 'avatar' | 'garment' | 'accessory' | 'prop' | 'environment';
 
 /**
+ * Asset Source Types for Phase 6 storage and delivery abstraction.
+ * Supported sources are local static public assets or remote HTTPS hosted assets.
+ */
+export type AssetSourceType = 'local' | 'remote';
+
+/**
+ * Asset Location Contract (Phase 6 Storage Abstraction)
+ * Vendor-neutral location pointing to where an asset binary is hosted/stored.
+ */
+export interface AssetLocation {
+  source: AssetSourceType;
+  path: string;
+}
+
+/**
  * Developer-facing 3D performance and geometry metadata.
  * Derived from GLB asset analysis or explicitly specified.
  */
@@ -20,7 +35,7 @@ export interface PerformanceMetadata {
 }
 
 /**
- * Generic 3D Asset Contract (Phase 5 Foundation)
+ * Generic 3D Asset Contract (Phase 5 & 6 Foundation)
  * Pure 3D asset metadata contract, strictly decoupled from commerce/product logic.
  */
 export interface Base3DAsset {
@@ -29,7 +44,8 @@ export interface Base3DAsset {
   schemaVersion: string; // e.g. '1.0'
   version: string;       // e.g. '1.0.0'
   displayName: string;
-  modelUrl: string;
+  modelUrl: string;      // Backwards-compatible runtime URL
+  location?: AssetLocation; // Explicit storage location definition
   metadata?: PerformanceMetadata & Record<string, unknown>;
 }
 
