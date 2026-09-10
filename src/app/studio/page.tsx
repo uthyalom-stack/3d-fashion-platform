@@ -270,6 +270,10 @@ export default function StudioPage() {
               <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '0.25rem', lineHeight: 1.3 }}>
                 <div><strong>ID:</strong> {selectedAsset.assetId}</div>
                 <div><strong>Type:</strong> {selectedAsset.assetType} | <strong>Ver:</strong> v{selectedAsset.version}</div>
+                <div><strong>Source:</strong> {selectedAsset.location.source} | <strong>Provider:</strong> {selectedAsset.location.provider || 'local'}</div>
+                {selectedAsset.location.objectKey && (
+                  <div style={{ wordBreak: 'break-all' }}><strong>Object Key:</strong> {selectedAsset.location.objectKey}</div>
+                )}
                 {selectedAsset.metadata?.triCount !== undefined && (
                   <div>
                     <strong>Tris:</strong> {selectedAsset.metadata.triCount} | <strong>Verts:</strong> {selectedAsset.metadata.vertexCount}
@@ -278,6 +282,9 @@ export default function StudioPage() {
                 {selectedAsset.metadata?.fileSizeBytes !== undefined && (
                   <div><strong>Size:</strong> {(selectedAsset.metadata.fileSizeBytes / 1024).toFixed(1)} KB</div>
                 )}
+                <div style={{ wordBreak: 'break-all', color: '#0071e3', marginTop: '2px' }}>
+                  <strong>Resolved URL:</strong> {resolveAssetUrl(selectedAsset)}
+                </div>
               </div>
             )}
           </div>
