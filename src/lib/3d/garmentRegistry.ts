@@ -3,8 +3,9 @@ import { Garment3DAsset } from '../../types/asset';
 import { getAssetsByType } from './assetRegistry';
 
 /**
- * Static Garment Registry
- * Derived directly from the central Asset Registry to ensure a single authoritative source of truth.
+ * DERIVED COMPATIBILITY ADAPTER
+ * This registry is NOT an independent source of truth.
+ * It is a runtime compatibility adapter derived directly from the authoritative central Asset Registry (`src/lib/3d/assetRegistry.ts`).
  * Supports lookups by primary asset ID (e.g. 'garment.top.basic-tshirt') and legacy alias ID (e.g. 'GARMENT_top_basic_tshirt').
  */
 function buildGarmentRegistry(): Record<string, GarmentAssetConfig> {

@@ -9,6 +9,21 @@ export interface ValidationResult {
 
 const VALID_ASSET_TYPES: AssetType[] = ['avatar', 'garment', 'accessory', 'prop', 'environment'];
 
+function isValid3DTuple(val: unknown): boolean {
+  if (!Array.isArray(val) || val.length !== 3) return false;
+  return val.every((n) => typeof n === 'number' && Number.isFinite(n));
+}
+
+function isValidScale(val: unknown): boolean {
+  if (typeof val === 'number') {
+    return Number.isFinite(val) && val > 0;
+  }
+  if (Array.isArray(val) && val.length === 3) {
+    return val.every((n) => typeof n === 'number' && Number.isFinite(n) && n > 0);
+  }
+  return false;
+}
+
 /**
  * Validates an individual 3D asset definition against platform contracts.
  * Pure TypeScript validation executable without WebGL or DOM dependencies.
@@ -75,17 +90,17 @@ export function validateAsset(
       });
     }
 
-    // Attachment metadata bounds/offset check
-    if (garment.positionOffset && (!Array.isArray(garment.positionOffset) || garment.positionOffset.length !== 3)) {
-      errors.push(`Garment asset "${asset.assetId}" positionOffset must be a 3-element tuple [x, y, z].`);
+    // Attachment metadata transform checks
+    if (garment.positionOffset !== undefined && !isValid3DTuple(garment.positionOffset)) {
+      errors.push(`Garment asset "${asset.assetId}" positionOffset must be a 3-element tuple of finite numbers [x, y, z].`);
     }
 
-    if (garment.rotationOffset && (!Array.isArray(garment.rotationOffset) || garment.rotationOffset.length !== 3)) {
-      errors.push(`Garment asset "${asset.assetId}" rotationOffset must be a 3-element tuple [x, y, z].`);
+    if (garment.rotationOffset !== undefined && !isValid3DTuple(garment.rotationOffset)) {
+      errors.push(`Garment asset "${asset.assetId}" rotationOffset must be a 3-element tuple of finite numbers [x, y, z].`);
     }
 
-    if (garment.scale !== undefined && (typeof garment.scale !== 'number' || garment.scale <= 0)) {
-      errors.push(`Garment asset "${asset.assetId}" scale must be a positive number.`);
+    if (garment.scale !== undefined && !isValidScale(garment.scale)) {
+      errors.push(`Garment asset "${asset.assetId}" scale must be a positive finite number or 3-element tuple of positive finite numbers.`);
     }
   }
 
@@ -99,6 +114,18 @@ export function validateAsset(
 
     if (!['male', 'female', 'unisex'].includes(avatar.gender)) {
       errors.push(`Avatar asset "${asset.assetId}" gender must be 'male', 'female', or 'unisex'.`);
+    }
+
+    if (avatar.positionOffset !== undefined && !isValid3DTuple(avatar.positionOffset)) {
+      errors.push(`Avatar asset "${asset.assetId}" positionOffset must be a 3-element tuple of finite numbers [x, y, z].`);
+    }
+
+    if (avatar.rotationOffset !== undefined && !isValid3DTuple(avatar.rotationOffset)) {
+      errors.push(`Avatar asset "${asset.assetId}" rotationOffset must be a 3-element tuple of finite numbers [x, y, z].`);
+    }
+
+    if (avatar.scale !== undefined && !isValidScale(avatar.scale)) {
+      errors.push(`Avatar asset "${asset.assetId}" scale must be a positive finite number or 3-element tuple of positive finite numbers.`);
     }
   }
 

@@ -77,7 +77,9 @@ Attachment Resolver & Skeleton Anchor
 
 ## 6. Resource Ownership & Lifecycle
 
-* The `AssetRegistry` is a pure metadata registry. It does NOT load GLTF files or instantiate Three.js objects.
-* `useGLTF` cache owns shared geometries and base materials.
-* Scene trees are cloned per `ModelLoader` instance (`gltf.scene.clone(true)`).
-* `ModelLoader` manages instance-owned materials (`deepCloneMaterials`) and cleans them up on unmount without corrupting cached GPU resources.
+The platform follows a safe Strict Mode-compatible resource ownership model established in Phase 1:
+
+* **Registry Scope:** The `AssetRegistry` is a pure metadata layer. It does NOT load GLTF files or instantiate Three.js objects.
+* **Cache Ownership:** Shared GPU geometries, base materials, and textures are owned exclusively by `@react-three/drei`'s `useGLTF` loader cache. Code outside the cache must never dispose these shared GPU resources.
+* **Instance Transform Isolation:** Every `ModelLoader` component instance creates an isolated clone of the Object3D scene tree (`gltf.scene.clone(true)`).
+* **Instance Material Management:** When instance-isolated materials are enabled (`deepCloneMaterials = true`), original material references are safely preserved in `mesh.userData._originalMaterial`. Upon unmount or React Strict Mode remount, instance-owned cloned materials are disposed cleanly via `disposeMaterial()` while original cached materials are restored prior to disposal, ensuring cached GPU allocations remain intact and uncorrupted.

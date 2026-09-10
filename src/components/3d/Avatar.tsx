@@ -6,6 +6,10 @@ import { ModelLoader } from './ModelLoader';
 import { AvatarProps, AvatarId, AvatarConfig } from '../../types/3d';
 import { getAvatarAsset } from '../../lib/3d/assetRegistry';
 
+/**
+ * DERIVED COMPATIBILITY ADAPTER
+ * Builds avatar configurations derived directly from the authoritative central Asset Registry (`src/lib/3d/assetRegistry.ts`).
+ */
 function buildAvatarRegistry(): Record<AvatarId, AvatarConfig> {
   const maleAsset = getAvatarAsset('male');
   const femaleAsset = getAvatarAsset('female');

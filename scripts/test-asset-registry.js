@@ -44,6 +44,33 @@ const {
 const { GARMENT_REGISTRY } = require('../src/lib/3d/garmentRegistry');
 const { AVATAR_REGISTRY } = require('../src/components/3d/Avatar');
 
+function getPngDimensions(buffer) {
+  if (buffer.length >= 24 && buffer.toString('hex', 0, 8) === '89504e470d0a1a0a') {
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return { width, height };
+  }
+  return null;
+}
+
+function getJpegDimensions(buffer) {
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset < buffer.length) {
+      if (buffer[offset] !== 0xff) break;
+      const marker = buffer[offset + 1];
+      if (marker === 0xc0 || marker === 0xc2) {
+        const height = buffer.readUInt16BE(offset + 5);
+        const width = buffer.readUInt16BE(offset + 7);
+        return { width, height };
+      }
+      const length = buffer.readUInt16BE(offset + 2);
+      offset += 2 + length;
+    }
+  }
+  return null;
+}
+
 function runAssetRegistryTests() {
   console.log('====================================================');
   console.log('Phase 5 — 3D Asset Registry & Validation Unit Tests');
@@ -216,7 +243,36 @@ function runAssetRegistryTests() {
   assert.ok(GARMENT_REGISTRY['GARMENT_top_basic_tshirt'].supportedAvatarIds.includes('male'));
   console.log('✔ PASS: Existing GARMENT_REGISTRY maintains complete compatibility.');
 
-  // 18. GLB Asset Binary Inspection & Performance Metrics Reporting
+  // 18. Hardened Attachment & Transform Validation
+  console.log('\nTest 18: Hardened Attachment & Transform Validation');
+
+  const nanPosAsset = { ...garmentAsset, assetId: 'garment.nan.pos', positionOffset: [NaN, 0, 0] };
+  assert.strictEqual(validateAsset(nanPosAsset).valid, false);
+
+  const stringPosAsset = { ...garmentAsset, assetId: 'garment.string.pos', positionOffset: ['0', 0, 0] };
+  assert.strictEqual(validateAsset(stringPosAsset).valid, false);
+
+  const infRotAsset = { ...garmentAsset, assetId: 'garment.inf.rot', rotationOffset: [0, Infinity, 0] };
+  assert.strictEqual(validateAsset(infRotAsset).valid, false);
+
+  const shortRotAsset = { ...garmentAsset, assetId: 'garment.short.rot', rotationOffset: [0, 0] };
+  assert.strictEqual(validateAsset(shortRotAsset).valid, false);
+
+  const negScaleAsset = { ...garmentAsset, assetId: 'garment.neg.scale', scale: -1.0 };
+  assert.strictEqual(validateAsset(negScaleAsset).valid, false);
+
+  const zeroScaleAsset = { ...garmentAsset, assetId: 'garment.zero.scale', scale: 0 };
+  assert.strictEqual(validateAsset(zeroScaleAsset).valid, false);
+
+  const strScaleAsset = { ...garmentAsset, assetId: 'garment.str.scale', scale: '1.0' };
+  assert.strictEqual(validateAsset(strScaleAsset).valid, false);
+
+  const nanTupleScaleAsset = { ...maleAsset, assetId: 'avatar.nan.scale', scale: [0.11, NaN, 0.11] };
+  assert.strictEqual(validateAsset(nanTupleScaleAsset).valid, false);
+
+  console.log('✔ PASS: Malformed transform offsets (NaN, Infinity, strings, invalid length, negative scale) rejected strictly.');
+
+  // 19. GLB Asset Binary Inspection & Performance Metrics Cross-Check
   console.log('\n----------------------------------------------------');
   console.log('GLB Asset Binary Inspection & Performance Metrics Reporting');
   console.log('----------------------------------------------------');
@@ -237,10 +293,30 @@ function runAssetRegistryTests() {
     const jsonStr = buffer.toString('utf8', 20, 20 + jsonChunkLen);
     const gltf = JSON.parse(jsonStr);
 
+    const binOffset = 20 + jsonChunkLen + 8; // skip 20 header + json + 8 bin chunk header
+
     let triCount = 0;
     let vertCount = 0;
     let materialCount = Array.isArray(gltf.materials) ? gltf.materials.length : 0;
     let textureCount = Array.isArray(gltf.textures) ? gltf.textures.length : 0;
+    let maxTextureDimension = 0;
+
+    if (Array.isArray(gltf.images)) {
+      gltf.images.forEach((img) => {
+        if (img.bufferView !== undefined && Array.isArray(gltf.bufferViews)) {
+          const bv = gltf.bufferViews[img.bufferView];
+          if (bv && bv.byteOffset !== undefined && bv.byteLength !== undefined) {
+            const imgStart = binOffset + bv.byteOffset;
+            const imgBuffer = buffer.subarray(imgStart, imgStart + bv.byteLength);
+            const dims = getPngDimensions(imgBuffer) || getJpegDimensions(imgBuffer);
+            if (dims) {
+              const maxDim = Math.max(dims.width, dims.height);
+              if (maxDim > maxTextureDimension) maxTextureDimension = maxDim;
+            }
+          }
+        }
+      });
+    }
 
     if (Array.isArray(gltf.meshes)) {
       gltf.meshes.forEach((mesh) => {
@@ -265,14 +341,53 @@ function runAssetRegistryTests() {
     console.log(`  Vertices: ${vertCount}`);
     console.log(`  Materials: ${materialCount}`);
     console.log(`  Textures: ${textureCount}`);
+    if (maxTextureDimension > 0) {
+      console.log(`  Max Texture Dim: ${maxTextureDimension}px`);
+    }
 
-    // Verify metrics in metadata match derived metrics if specified
+    // Strictly cross-check metadata metrics against derived values from actual GLB binary
     if (asset.metadata) {
       if (asset.metadata.triCount !== undefined) {
-        assert.strictEqual(asset.metadata.triCount, triCount, `Asset [${asset.assetId}] metadata triCount must match GLB binary count`);
+        assert.strictEqual(
+          asset.metadata.triCount,
+          triCount,
+          `Asset [${asset.assetId}] metadata triCount (${asset.metadata.triCount}) does not match derived GLB binary count (${triCount})`
+        );
       }
       if (asset.metadata.vertexCount !== undefined) {
-        assert.strictEqual(asset.metadata.vertexCount, vertCount, `Asset [${asset.assetId}] metadata vertexCount must match GLB binary count`);
+        assert.strictEqual(
+          asset.metadata.vertexCount,
+          vertCount,
+          `Asset [${asset.assetId}] metadata vertexCount (${asset.metadata.vertexCount}) does not match derived GLB binary count (${vertCount})`
+        );
+      }
+      if (asset.metadata.materialCount !== undefined) {
+        assert.strictEqual(
+          asset.metadata.materialCount,
+          materialCount,
+          `Asset [${asset.assetId}] metadata materialCount (${asset.metadata.materialCount}) does not match derived GLB binary count (${materialCount})`
+        );
+      }
+      if (asset.metadata.fileSizeBytes !== undefined) {
+        assert.strictEqual(
+          asset.metadata.fileSizeBytes,
+          stats.size,
+          `Asset [${asset.assetId}] metadata fileSizeBytes (${asset.metadata.fileSizeBytes}) does not match actual GLB file size (${stats.size})`
+        );
+      }
+      if (asset.metadata.textureCount !== undefined) {
+        assert.strictEqual(
+          asset.metadata.textureCount,
+          textureCount,
+          `Asset [${asset.assetId}] metadata textureCount (${asset.metadata.textureCount}) does not match derived GLB binary count (${textureCount})`
+        );
+      }
+      if (asset.metadata.maxTextureDimension !== undefined && maxTextureDimension > 0) {
+        assert.strictEqual(
+          asset.metadata.maxTextureDimension,
+          maxTextureDimension,
+          `Asset [${asset.assetId}] metadata maxTextureDimension (${asset.metadata.maxTextureDimension}) does not match derived GLB binary dimension (${maxTextureDimension})`
+        );
       }
     }
   });
