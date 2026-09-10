@@ -1,7 +1,11 @@
 /**
- * 3D Scene, Viewer, and Engine Asset Type Definitions
- * Phase 1 & Phase 2 Asset Foundation
+ * 3D Scene, Viewer, and Engine Viewer Type Definitions
+ * Phase 1, Phase 2, & Phase 5 Scene Infrastructure
  */
+
+import { AssetType } from './asset';
+
+export type { AssetType };
 
 export interface CameraConfig {
   fov: number;
@@ -41,10 +45,9 @@ export interface AvatarConfig {
 }
 
 /**
- * Interface boundary for future garment/clothing system.
- * Allows future garment layers to attach to avatar slots without refactoring the viewer.
+ * Interface boundary for garment attachment slots.
  */
-export interface GarmentSlot {
+export interface GarmentSlotConfig {
   id: string;
   name: string;
   category: 'top' | 'bottom' | 'shoes' | 'accessory' | 'outerwear';
@@ -120,48 +123,11 @@ export interface AvatarProps {
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number] | number;
-  garmentSlots?: GarmentSlot[];
+  garmentSlots?: GarmentSlotConfig[];
   castShadow?: boolean;
   receiveShadow?: boolean;
   deepCloneMaterials?: boolean;
   onLoad?: () => void;
-}
-
-/**
- * Generic 3D Asset Definitions (Phase 1 & Phase 2 Engine Infrastructure)
- * Clean, generic model contracts decoupled from commerce/product logic.
- */
-export type AssetType = 'avatar' | 'garment' | 'accessory' | 'prop' | 'environment';
-
-export interface AssetMetadata {
-  scale?: [number, number, number];
-  positionOffset?: [number, number, number];
-  rotationOffset?: [number, number, number];
-  format?: 'glb' | 'gltf';
-  fileSizeBytes?: number;
-  [key: string]: unknown;
-}
-
-export interface AvatarMetadata extends AssetMetadata {
-  avatarId?: AvatarId;
-  heightMeters?: number;
-  neutralPose?: string;
-  skeletonType?: string;
-  jointNames?: AvatarJointName[];
-  attachmentPoints?: Record<string, [number, number, number]>;
-}
-
-export interface Asset3D {
-  id: string;
-  url: string;
-  name: string;
-  type: AssetType;
-  metadata?: AssetMetadata;
-}
-
-export interface AvatarAsset extends Asset3D {
-  type: 'avatar';
-  metadata?: AvatarMetadata;
 }
 
 export type AssetLoadStatus = 'idle' | 'loading' | 'loaded' | 'error';

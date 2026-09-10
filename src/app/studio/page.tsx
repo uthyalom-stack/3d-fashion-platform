@@ -8,6 +8,8 @@ import { CameraControlsRef, AvatarId } from '@/types/3d';
 import { GarmentSlot, OutfitState, CANONICAL_GARMENT_SLOTS } from '@/types/garment';
 import { OutfitManager, createEmptyOutfitState } from '@/lib/3d/outfitManager';
 import { GARMENT_REGISTRY, DEFAULT_GARMENT_ID } from '@/lib/3d/garmentRegistry';
+import { getAssets, getAsset } from '@/lib/3d/assetRegistry';
+import { Platform3DAsset, Garment3DAsset } from '@/types/asset';
 import styles from './studio.module.css';
 
 function getInitialOutfitState(): OutfitState {
@@ -22,6 +24,14 @@ export default function StudioPage() {
   const [showGrid, setShowGrid] = useState<boolean>(true);
   const [activeModelUrl, setActiveModelUrl] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Asset Registry Developer Inspection State
+  const allRegistryAssets = getAssets();
+  const [selectedAssetId, setSelectedAssetId] = useState<string>(
+    allRegistryAssets[0]?.assetId || 'garment.top.basic-tshirt'
+  );
+
+  const selectedAsset: Platform3DAsset | null = getAsset(selectedAssetId);
 
   // Initialize Outfit Manager instance lazily
   const [outfitManager] = useState<OutfitManager>(
@@ -89,6 +99,26 @@ export default function StudioPage() {
     outfitManager.unequip(slot);
     setOutfitState(outfitManager.getOutfitState());
     setStatusMessage(`Unequipped garment from slot "${slot}".`);
+  };
+
+  const handleLoadSelectedRegistryAsset = () => {
+    if (!selectedAsset) return;
+
+    if (selectedAsset.assetType === 'garment') {
+      const gAsset = selectedAsset as Garment3DAsset;
+      const result = outfitManager.equip(gAsset.slot, gAsset.assetId);
+      if (result.valid) {
+        setOutfitState(outfitManager.getOutfitState());
+        setStatusMessage(`Equipped asset "${gAsset.displayName}" into slot "${gAsset.slot}".`);
+      } else {
+        setStatusMessage(`Registry load failed: ${result.error}`);
+      }
+    } else if (selectedAsset.assetType === 'avatar') {
+      handleAvatarChange(selectedAsset.assetId.includes('female') ? 'female' : 'male');
+    } else {
+      setActiveModelUrl(selectedAsset.modelUrl);
+      setStatusMessage(`Loaded asset model URL: ${selectedAsset.modelUrl}`);
+    }
   };
 
   return (
@@ -189,10 +219,65 @@ export default function StudioPage() {
           />
         </ViewerCanvas>
 
-        {/* Informational overlay */}
-        <div className={styles.overlay}>
+        {/* Developer overlay */}
+        <div className={styles.overlay} style={{ pointerEvents: 'auto', maxWidth: '340px' }}>
           <div>
-            <strong>Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
+            <strong>Active Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
+          </div>
+
+          {/* 3D Asset Registry Developer Inspection */}
+          <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e5e5ea', paddingTop: '0.5rem' }}>
+            <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>3D Asset Registry:</strong>
+            <div style={{ display: 'flex', gap: '4px', marginTop: '0.25rem' }}>
+              <select
+                value={selectedAssetId}
+                onChange={(e) => setSelectedAssetId(e.target.value)}
+                style={{
+                  flex: 1,
+                  fontSize: '0.75rem',
+                  padding: '2px 4px',
+                  borderRadius: '4px',
+                  border: '1px solid #ccc',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                {allRegistryAssets.map((asset) => (
+                  <option key={asset.assetId} value={asset.assetId}>
+                    [{asset.assetType}] {asset.displayName}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={handleLoadSelectedRegistryAsset}
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  border: '1px solid #0071e3',
+                  backgroundColor: '#0071e3',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                }}
+              >
+                Load
+              </button>
+            </div>
+
+            {selectedAsset && (
+              <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '0.25rem', lineHeight: 1.3 }}>
+                <div><strong>ID:</strong> {selectedAsset.assetId}</div>
+                <div><strong>Type:</strong> {selectedAsset.assetType} | <strong>Ver:</strong> v{selectedAsset.version}</div>
+                {selectedAsset.metadata?.triCount !== undefined && (
+                  <div>
+                    <strong>Tris:</strong> {selectedAsset.metadata.triCount} | <strong>Verts:</strong> {selectedAsset.metadata.vertexCount}
+                  </div>
+                )}
+                {selectedAsset.metadata?.fileSizeBytes !== undefined && (
+                  <div><strong>Size:</strong> {(selectedAsset.metadata.fileSizeBytes / 1024).toFixed(1)} KB</div>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e5e5ea', paddingTop: '0.5rem' }}>

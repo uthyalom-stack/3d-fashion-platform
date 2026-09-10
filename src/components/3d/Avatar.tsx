@@ -4,32 +4,43 @@ import React from 'react';
 import { Object3D } from 'three';
 import { ModelLoader } from './ModelLoader';
 import { AvatarProps, AvatarId, AvatarConfig } from '../../types/3d';
+import { getAvatarAsset } from '../../lib/3d/assetRegistry';
+
+/**
+ * DERIVED COMPATIBILITY ADAPTER
+ * Builds avatar configurations derived directly from the authoritative central Asset Registry (`src/lib/3d/assetRegistry.ts`).
+ */
+function buildAvatarRegistry(): Record<AvatarId, AvatarConfig> {
+  const maleAsset = getAvatarAsset('male');
+  const femaleAsset = getAvatarAsset('female');
+
+  return {
+    male: {
+      id: 'male',
+      name: maleAsset?.displayName || 'Adult Male Avatar',
+      modelUrl: maleAsset?.modelUrl || '/models/avatar/male/base-avatar.glb',
+      scale: maleAsset?.scale ?? 0.11,
+      positionOffset: maleAsset?.positionOffset || [0, 0, 0],
+      rotationOffset: maleAsset?.rotationOffset || [0, 0, 0],
+      gender: maleAsset?.gender || 'male',
+    },
+    female: {
+      id: 'female',
+      name: femaleAsset?.displayName || 'Adult Female Avatar',
+      modelUrl: femaleAsset?.modelUrl || '/models/avatar/female/base-avatar.glb',
+      scale: femaleAsset?.scale ?? 0.10,
+      positionOffset: femaleAsset?.positionOffset || [0, 0, 0],
+      rotationOffset: femaleAsset?.rotationOffset || [0, 0, 0],
+      gender: femaleAsset?.gender || 'female',
+    },
+  };
+}
 
 /**
  * Avatar Registry Configuration
- * Maps adult avatar identifiers to runtime GLB assets exported from the MakeHuman / MPFB2 ecosystem
- * with normalized scale factors for consistent real-world human proportions (~1.73m - 1.75m height).
+ * Maps adult avatar identifiers to runtime GLB assets derived from central Asset Registry.
  */
-export const AVATAR_REGISTRY: Record<AvatarId, AvatarConfig> = {
-  male: {
-    id: 'male',
-    name: 'Adult Male Avatar',
-    modelUrl: '/models/avatar/male/base-avatar.glb',
-    scale: 0.11, // Normalizes MakeHuman decimeter model (15.91 dm) to 1.75m adult human height
-    positionOffset: [0, 0, 0],
-    rotationOffset: [0, 0, 0],
-    gender: 'male',
-  },
-  female: {
-    id: 'female',
-    name: 'Adult Female Avatar',
-    modelUrl: '/models/avatar/female/base-avatar.glb',
-    scale: 0.10, // Normalizes MakeHuman decimeter model (17.29 dm) to 1.73m adult human height
-    positionOffset: [0, 0, 0],
-    rotationOffset: [0, 0, 0],
-    gender: 'female',
-  },
-};
+export const AVATAR_REGISTRY: Record<AvatarId, AvatarConfig> = buildAvatarRegistry();
 
 export const DEFAULT_AVATAR_ID: AvatarId = 'male';
 
