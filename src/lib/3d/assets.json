@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "1.0",
+  "assets": [
+    {
+      "assetId": "avatar.male.base",
+      "aliasIds": ["male"],
+      "assetType": "avatar",
+      "schemaVersion": "1.0",
+      "version": "1.0.0",
+      "displayName": "Adult Male Base Avatar",
+      "modelUrl": "/models/avatar/male/base-avatar.glb",
+      "avatarId": "male",
+      "gender": "male",
+      "scale": 0.11,
+      "positionOffset": [0, 0, 0],
+      "rotationOffset": [0, 0, 0],
+      "metadata": {
+        "fileSizeBytes": 933328,
+        "triCount": 26756,
+        "vertexCount": 14517,
+        "materialCount": 0
+      }
+    },
+    {
+      "assetId": "avatar.female.base",
+      "aliasIds": ["female"],
+      "assetType": "avatar",
+      "schemaVersion": "1.0",
+      "version": "1.0.0",
+      "displayName": "Adult Female Base Avatar",
+      "modelUrl": "/models/avatar/female/base-avatar.glb",
+      "avatarId": "female",
+      "gender": "female",
+      "scale": 0.10,
+      "positionOffset": [0, 0, 0],
+      "rotationOffset": [0, 0, 0],
+      "metadata": {
+        "fileSizeBytes": 932920,
+        "triCount": 26756,
+        "vertexCount": 14517,
+        "materialCount": 0
+      }
+    },
+    {
+      "assetId": "garment.top.basic-tshirt",
+      "aliasIds": ["GARMENT_top_basic_tshirt"],
+      "assetType": "garment",
+      "schemaVersion": "1.0",
+      "version": "1.0.0",
+      "displayName": "Basic Short-Sleeve T-Shirt",
+      "modelUrl": "/models/garment/top/GARMENT_top_basic_tshirt.glb",
+      "slot": "top",
+      "supportedAvatarIds": ["male", "female"],
+      "scale": 1.0,
+      "positionOffset": [0, 0, 0],
+      "rotationOffset": [0, 0, 0],
+      "metadata": {
+        "description": "Canonical short-sleeve crewneck t-shirt modeled for adult base avatars.",
+        "category": "top",
+        "triCount": 1600,
+        "vertexCount": 864,
+        "materialCount": 1,
+        "license": "MIT",
+        "bounds": {
+          "min": [-3.815, -2.475, -1.356],
+          "max": [3.815, 2.475, 1.356]
+        }
+      }
+    }
+  ]
+}
