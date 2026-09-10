@@ -7,18 +7,40 @@ import { AvatarId } from './3d';
 export type AssetType = 'avatar' | 'garment' | 'accessory' | 'prop' | 'environment';
 
 /**
- * Asset Source Types for Phase 6 storage and delivery abstraction.
- * Supported sources are local static public assets or remote HTTPS hosted assets.
+ * Asset Source Types for Phase 6 & Phase 7 storage and delivery abstraction.
+ * Supported sources:
+ * - 'local': static asset relative to web root (/models/...)
+ * - 'remote': direct HTTPS URL
+ * - 'provider': managed object storage provider asset
  */
-export type AssetSourceType = 'local' | 'remote';
+export type AssetSourceType = 'local' | 'remote' | 'provider';
 
 /**
- * Asset Location Contract (Phase 6 Storage Abstraction)
- * Vendor-neutral location pointing to where an asset binary is hosted/stored.
+ * Asset Location Contract (Phase 6 & Phase 7 Storage Abstraction)
+ * Authoritative vendor-neutral location contract pointing to where an asset binary is stored.
  */
 export interface AssetLocation {
   source: AssetSourceType;
-  path: string;
+  /**
+   * For 'local' and 'remote' sources: relative path or absolute HTTPS URL.
+   * For 'provider' source: optional fallback path or canonical relative location.
+   */
+  path?: string;
+  /**
+   * Identifier of the registered storage provider (e.g., 'local', 'r2').
+   * Required when source === 'provider'.
+   */
+  provider?: string;
+  /**
+   * Deterministic, filesystem/object-storage safe object key (e.g., 'avatars/male/v1.0.0/base-avatar.glb').
+   * Required when source === 'provider'.
+   */
+  objectKey?: string;
+  /**
+   * Optional provider-specific non-sensitive metadata (e.g. bucket alias, region).
+   * Credentials or secrets must NEVER be placed here.
+   */
+  providerMetadata?: Record<string, unknown>;
 }
 
 /**
