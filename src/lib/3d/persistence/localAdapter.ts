@@ -1,10 +1,32 @@
 import { Platform3DAsset, AssetType } from '../../../types/asset';
 import { validateAsset } from '../assetValidator';
-import { AssetRepository } from './types';
+import { AssetRepository, PersistedAssetRecord } from './types';
 
 function deepClone<T>(obj: T): T {
   if (obj === undefined || obj === null) return obj;
   return JSON.parse(JSON.stringify(obj));
+}
+
+const ALIAS_FORMAT_REGEX = /^[a-zA-Z0-9._-]+$/;
+
+function validateAliases(aliasIds: unknown, assetId: string): string[] {
+  if (aliasIds === undefined || aliasIds === null) {
+    return [];
+  }
+  if (!Array.isArray(aliasIds)) {
+    throw new Error(`Invalid aliasIds for asset "${assetId}". Must be an array of strings.`);
+  }
+
+  const validAliases: string[] = [];
+  for (const alias of aliasIds) {
+    if (typeof alias !== 'string' || alias.trim() === '' || !ALIAS_FORMAT_REGEX.test(alias.trim())) {
+      throw new Error(
+        `Invalid alias ID "${alias}" for asset "${assetId}". Must be a non-empty filesystem-safe string (alphanumeric, dot, dash, underscore).`
+      );
+    }
+    validAliases.push(alias.trim());
+  }
+  return validAliases;
 }
 
 /**
@@ -13,14 +35,15 @@ function deepClone<T>(obj: T): T {
  *
  * Capabilities:
  * - Deterministic, ordered asset metadata store.
- * - Strict metadata validation using platform `validateAsset` before saving.
- * - Deep cloning on read/write to protect internal repository state from external mutation.
- * - Deterministic alias mapping.
+ * - Full alias support (`PersistedAssetRecord`) for portable repository replication.
+ * - Strict metadata and alias validation using platform `validateAsset` before saving.
+ * - Deep cloning on read/write boundaries to protect internal repository state from external mutation.
  * - Pure TypeScript with zero database credentials or external SaaS dependencies.
  */
 export class LocalAssetPersistenceAdapter implements AssetRepository {
   private store = new Map<string, Platform3DAsset>();
-  private aliases = new Map<string, string>(); // aliasId -> primaryAssetId
+  private aliasToPrimary = new Map<string, string>(); // aliasId -> primaryAssetId
+  private primaryToAliases = new Map<string, Set<string>>(); // primaryAssetId -> Set<aliasId>
   private insertionOrder: string[] = [];
 
   /**
@@ -31,8 +54,8 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
     if (this.store.has(idOrAlias)) {
       return idOrAlias;
     }
-    if (this.aliases.has(idOrAlias)) {
-      return this.aliases.get(idOrAlias)!;
+    if (this.aliasToPrimary.has(idOrAlias)) {
+      return this.aliasToPrimary.get(idOrAlias)!;
     }
     return idOrAlias;
   }
@@ -42,6 +65,21 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
     const primaryId = this.resolvePrimaryId(assetId);
     const asset = this.store.get(primaryId);
     return asset ? deepClone(asset) : null;
+  }
+
+  async getRecord(assetId: string): Promise<PersistedAssetRecord | null> {
+    if (!assetId || typeof assetId !== 'string') return null;
+    const primaryId = this.resolvePrimaryId(assetId);
+    const asset = this.store.get(primaryId);
+    if (!asset) return null;
+
+    const aliasSet = this.primaryToAliases.get(primaryId);
+    const aliasIds = aliasSet ? Array.from(aliasSet) : [];
+
+    return deepClone({
+      asset,
+      aliasIds,
+    });
   }
 
   async getAssets(): Promise<Platform3DAsset[]> {
@@ -54,6 +92,22 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
   async getAssetsByType(assetType: AssetType): Promise<Platform3DAsset[]> {
     const all = await this.getAssets();
     return all.filter((asset) => asset.assetType === assetType);
+  }
+
+  async getRecords(): Promise<PersistedAssetRecord[]> {
+    const records: PersistedAssetRecord[] = [];
+    for (const primaryId of this.insertionOrder) {
+      const asset = this.store.get(primaryId);
+      if (asset) {
+        const aliasSet = this.primaryToAliases.get(primaryId);
+        const aliasIds = aliasSet ? Array.from(aliasSet) : [];
+        records.push({
+          asset,
+          aliasIds,
+        });
+      }
+    }
+    return deepClone(records);
   }
 
   async hasAsset(assetId: string): Promise<boolean> {
@@ -84,36 +138,58 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
       }
     }
 
-    // Strict validation before saving
+    // Strict validation of asset metadata before saving
     const validation = validateAsset(asset, knownAvatarIds);
     if (!validation.valid) {
       throw new Error(`Validation failed for asset "${asset.assetId}": ${validation.errors.join('; ')}`);
     }
 
-    const clonedAsset = deepClone(asset);
-
-    // Maintain insertion order for new primary assets
-    if (!this.store.has(clonedAsset.assetId)) {
-      this.insertionOrder.push(clonedAsset.assetId);
-    }
-
-    // Persist asset clone
-    this.store.set(clonedAsset.assetId, clonedAsset);
-
-    // Register alias IDs if explicitly supplied or defined on asset record
-    const aliasesToRegister = new Set<string>();
-    if (aliasIds && Array.isArray(aliasIds)) {
-      aliasIds.forEach((alias) => aliasesToRegister.add(alias));
+    // Merge aliases explicitly provided with aliases embedded on asset record (if any)
+    const rawAliases: string[] = [];
+    if (aliasIds) {
+      rawAliases.push(...aliasIds);
     }
     if ('aliasIds' in asset && Array.isArray((asset as unknown as { aliasIds?: string[] }).aliasIds)) {
-      (asset as unknown as { aliasIds: string[] }).aliasIds.forEach((alias) => aliasesToRegister.add(alias));
+      rawAliases.push(...(asset as unknown as { aliasIds: string[] }).aliasIds);
     }
 
-    aliasesToRegister.forEach((alias) => {
-      if (alias !== clonedAsset.assetId) {
-        this.aliases.set(alias, clonedAsset.assetId);
+    // Strict alias validation
+    const validatedAliases = validateAliases(rawAliases, asset.assetId);
+
+    const primaryId = asset.assetId;
+    const clonedAsset = deepClone(asset);
+
+    // If updating existing primary asset, clean up old alias maps first
+    if (this.store.has(primaryId)) {
+      const oldAliases = this.primaryToAliases.get(primaryId);
+      if (oldAliases) {
+        for (const oldAlias of oldAliases) {
+          this.aliasToPrimary.delete(oldAlias);
+        }
       }
-    });
+    } else {
+      this.insertionOrder.push(primaryId);
+    }
+
+    // Store asset
+    this.store.set(primaryId, clonedAsset);
+
+    // Register new aliases
+    const aliasSet = new Set<string>();
+    for (const alias of validatedAliases) {
+      if (alias !== primaryId) {
+        this.aliasToPrimary.set(alias, primaryId);
+        aliasSet.add(alias);
+      }
+    }
+    this.primaryToAliases.set(primaryId, aliasSet);
+  }
+
+  async saveRecord(record: PersistedAssetRecord): Promise<void> {
+    if (!record || typeof record !== 'object') {
+      throw new Error('PersistedAssetRecord must be a non-null object.');
+    }
+    await this.saveAsset(record.asset, record.aliasIds);
   }
 
   async deleteAsset(assetId: string): Promise<boolean> {
@@ -124,23 +200,41 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
       return false;
     }
 
+    // Delete primary asset record and insertion order entry
     this.store.delete(primaryId);
     this.insertionOrder = this.insertionOrder.filter((id) => id !== primaryId);
 
-    // Remove any alias pointers mapped to this primary ID
-    for (const [alias, targetId] of Array.from(this.aliases.entries())) {
-      if (targetId === primaryId) {
-        this.aliases.delete(alias);
+    // Delete associated alias maps
+    const associatedAliases = this.primaryToAliases.get(primaryId);
+    if (associatedAliases) {
+      for (const alias of associatedAliases) {
+        this.aliasToPrimary.delete(alias);
       }
     }
+    this.primaryToAliases.delete(primaryId);
 
     return true;
   }
 
   async clear(): Promise<void> {
     this.store.clear();
-    this.aliases.clear();
+    this.aliasToPrimary.clear();
+    this.primaryToAliases.clear();
     this.insertionOrder = [];
+  }
+
+  async seed(records: PersistedAssetRecord[]): Promise<number> {
+    if (!Array.isArray(records)) {
+      throw new Error('Seed input must be an array of PersistedAssetRecords.');
+    }
+
+    await this.clear();
+
+    for (const record of records) {
+      await this.saveRecord(record);
+    }
+
+    return this.store.size;
   }
 
   async count(): Promise<number> {

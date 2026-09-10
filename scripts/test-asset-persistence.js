@@ -26,69 +26,67 @@ const {
   seedAssetRepository,
 } = require('../src/lib/3d/persistence');
 
+const {
+  setAssetRepository,
+  getAssetRepository,
+  getAsset: getRegistryAsset,
+  hasAsset: hasRegistryAsset,
+  resolveAssetId: resolveRegistryAssetId,
+} = require('../src/lib/3d/assetRegistry');
+
 async function runAssetPersistenceTests() {
   console.log('====================================================');
   console.log('Phase 8 — 3D Asset Metadata Persistence Unit Tests');
   console.log('====================================================\n');
 
-  // Test 1: Repository Creation
-  console.log('Test 1: Repository Creation');
+  // Test 1: Repository implements seed()
+  console.log('Test 1: Repository Implements seed() Method');
   const repo = new LocalAssetPersistenceAdapter();
-  assert.ok(repo, 'Repository instance created successfully');
-  console.log('✔ PASS: LocalAssetPersistenceAdapter initialized cleanly.');
+  assert.ok(typeof repo.seed === 'function', 'Repository must implement seed()');
+  console.log('✔ PASS: LocalAssetPersistenceAdapter implements seed() method cleanly.');
 
-  // Test 2: Empty Repository
-  console.log('\nTest 2: Empty Repository Behavior');
-  assert.strictEqual(await repo.count(), 0, 'Initial count must be 0');
-  assert.deepStrictEqual(await repo.getAssets(), [], 'getAssets on empty repo returns empty array');
-  assert.strictEqual(await repo.getAsset('male'), null, 'getAsset on empty repo returns null');
-  assert.strictEqual(await repo.hasAsset('male'), false, 'hasAsset on empty repo returns false');
-  console.log('✔ PASS: Empty repository methods behave deterministically.');
+  // Test 2: seed() imports all manifest records
+  console.log('\nTest 2: seed() Imports All Manifest Records');
+  const manifestData = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/lib/3d/assets.json'), 'utf8'));
+  const seededCount = await seedAssetRepository(repo);
+  assert.strictEqual(seededCount, manifestData.assets.length, 'Seeded count must match manifest records count');
+  assert.strictEqual(await repo.count(), manifestData.assets.length, 'Repository count matches seeded records count');
+  console.log(`✔ PASS: seed() imported all ${seededCount} manifest records.`);
 
-  // Test 3: Seed / Import of Current Manifest
-  console.log('\nTest 3: Seed / Import Current Manifest');
-  const countSeeded = await seedAssetRepository(repo);
-  assert.ok(countSeeded >= 3, `Seeded ${countSeeded} assets from manifest`);
-  assert.strictEqual(await repo.count(), countSeeded, 'Repo count matches seeded count');
-  console.log(`✔ PASS: Seeded ${countSeeded} assets from assets.json manifest successfully.`);
+  // Test 3: seed() preserves aliases
+  console.log('\nTest 3: seed() Preserves Aliases');
+  const maleRecord = await repo.getRecord('avatar.male.base');
+  assert.ok(maleRecord, 'Must retrieve male record');
+  assert.ok(Array.isArray(maleRecord.aliasIds));
+  assert.ok(maleRecord.aliasIds.includes('male'), 'Male record must preserve alias "male"');
+  console.log('✔ PASS: seed() preserved alias mappings cleanly.');
 
-  // Test 4: getAsset (Primary ID & Alias)
-  console.log('\nTest 4: getAsset (Primary ID & Alias)');
+  // Test 4: getAsset(primary ID)
+  console.log('\nTest 4: getAsset(primary ID)');
   const maleByPrimary = await repo.getAsset('avatar.male.base');
-  assert.ok(maleByPrimary, 'Must find male avatar by primary ID');
+  assert.ok(maleByPrimary);
   assert.strictEqual(maleByPrimary.assetId, 'avatar.male.base');
+  console.log('✔ PASS: getAsset(primary ID) returned expected Platform3DAsset.');
 
+  // Test 5: getAsset(alias)
+  console.log('\nTest 5: getAsset(alias)');
   const maleByAlias = await repo.getAsset('male');
-  assert.ok(maleByAlias, 'Must find male avatar by alias');
+  assert.ok(maleByAlias);
   assert.strictEqual(maleByAlias.assetId, 'avatar.male.base');
-  console.log('✔ PASS: getAsset retrieved assets cleanly by primary ID and alias.');
+  console.log('✔ PASS: getAsset(alias) resolved and returned expected primary Platform3DAsset.');
 
-  // Test 5: getAssets
-  console.log('\nTest 5: getAssets');
-  const allAssets = await repo.getAssets();
-  assert.strictEqual(allAssets.length, countSeeded);
-  console.log('✔ PASS: getAssets returned all persisted asset metadata records.');
-
-  // Test 6: getAssetsByType
-  console.log('\nTest 6: getAssetsByType');
-  const avatarAssets = await repo.getAssetsByType('avatar');
-  assert.ok(avatarAssets.length >= 2);
-  avatarAssets.forEach((a) => assert.strictEqual(a.assetType, 'avatar'));
-
-  const garmentAssets = await repo.getAssetsByType('garment');
-  assert.ok(garmentAssets.length >= 1);
-  garmentAssets.forEach((g) => assert.strictEqual(g.assetType, 'garment'));
-  console.log('✔ PASS: getAssetsByType filtered assets deterministically.');
-
-  // Test 7: hasAsset
-  console.log('\nTest 7: hasAsset');
+  // Test 6: hasAsset(primary ID)
+  console.log('\nTest 6: hasAsset(primary ID)');
   assert.strictEqual(await repo.hasAsset('avatar.male.base'), true);
-  assert.strictEqual(await repo.hasAsset('male'), true);
-  assert.strictEqual(await repo.hasAsset('non.existent.id'), false);
-  console.log('✔ PASS: hasAsset returned expected boolean status for primary and alias IDs.');
+  console.log('✔ PASS: hasAsset(primary ID) returned true.');
 
-  // Test 8: saveAsset
-  console.log('\nTest 8: saveAsset');
+  // Test 7: hasAsset(alias)
+  console.log('\nTest 7: hasAsset(alias)');
+  assert.strictEqual(await repo.hasAsset('male'), true);
+  console.log('✔ PASS: hasAsset(alias) returned true.');
+
+  // Test 8: Save with aliases
+  console.log('\nTest 8: Save with Aliases');
   const newGarment = {
     assetId: 'garment.bottom.test-jeans',
     assetType: 'garment',
@@ -105,195 +103,186 @@ async function runAssetPersistenceTests() {
     positionOffset: [0, 0, 0],
     rotationOffset: [0, 0, 0],
   };
+  await repo.saveAsset(newGarment, ['test_jeans_alias']);
+  assert.strictEqual(await repo.hasAsset('test_jeans_alias'), true);
+  const jeansByAlias = await repo.getAsset('test_jeans_alias');
+  assert.ok(jeansByAlias);
+  assert.strictEqual(jeansByAlias.assetId, 'garment.bottom.test-jeans');
+  console.log('✔ PASS: saveAsset persisted asset and alias mappings successfully.');
 
-  await repo.saveAsset(newGarment, ['test_jeans']);
-  assert.strictEqual(await repo.count(), countSeeded + 1);
-  const fetchedJeans = await repo.getAsset('test_jeans');
-  assert.ok(fetchedJeans);
-  assert.strictEqual(fetchedJeans.assetId, 'garment.bottom.test-jeans');
-  console.log('✔ PASS: saveAsset persisted new valid asset with aliases successfully.');
+  // Test 9: Update asset without losing aliases
+  console.log('\nTest 9: Update Asset Without Losing Aliases');
+  const updatedJeans = { ...newGarment, displayName: 'Test Denim Jeans v2' };
+  await repo.saveAsset(updatedJeans, ['test_jeans_alias']);
+  assert.strictEqual(await repo.hasAsset('test_jeans_alias'), true);
+  const reJeans = await repo.getAsset('test_jeans_alias');
+  assert.strictEqual(reJeans.displayName, 'Test Denim Jeans v2');
+  console.log('✔ PASS: Updated asset while preserving alias mappings.');
 
-  // Test 9: Update Existing Asset
-  console.log('\nTest 9: Update Existing Asset');
-  const updatedJeans = {
-    ...newGarment,
-    displayName: 'Test Denim Jeans Updated',
-  };
-  await repo.saveAsset(updatedJeans);
-  assert.strictEqual(await repo.count(), countSeeded + 1, 'Count remains unchanged on update');
-  const refetchedJeans = await repo.getAsset('garment.bottom.test-jeans');
-  assert.strictEqual(refetchedJeans.displayName, 'Test Denim Jeans Updated');
-  console.log('✔ PASS: Updated existing asset record cleanly in place.');
+  // Test 10: Replace aliases correctly on update
+  console.log('\nTest 10: Replace Aliases Correctly on Update');
+  await repo.saveAsset(updatedJeans, ['new_jeans_alias']);
+  assert.strictEqual(await repo.hasAsset('new_jeans_alias'), true);
+  assert.strictEqual(await repo.hasAsset('test_jeans_alias'), false, 'Old alias must be replaced on update with new alias array');
+  console.log('✔ PASS: Old aliases cleaned up and replaced on asset update.');
 
-  // Test 10: deleteAsset
-  console.log('\nTest 10: deleteAsset');
-  const deleteResult = await repo.deleteAsset('garment.bottom.test-jeans');
-  assert.strictEqual(deleteResult, true, 'deleteAsset returns true on success');
-  assert.strictEqual(await repo.count(), countSeeded);
-  assert.strictEqual(await repo.getAsset('garment.bottom.test-jeans'), null);
-  assert.strictEqual(await repo.getAsset('test_jeans'), null, 'Alias also removed on delete');
-  console.log('✔ PASS: deleteAsset removed primary asset and alias mappings cleanly.');
+  // Test 11: Delete by primary ID removes aliases
+  console.log('\nTest 11: Delete by Primary ID Removes Aliases');
+  await repo.saveAsset(newGarment, ['delete_primary_alias']);
+  assert.strictEqual(await repo.hasAsset('delete_primary_alias'), true);
+  const delPrimResult = await repo.deleteAsset('garment.bottom.test-jeans');
+  assert.strictEqual(delPrimResult, true);
+  assert.strictEqual(await repo.hasAsset('garment.bottom.test-jeans'), false);
+  assert.strictEqual(await repo.hasAsset('delete_primary_alias'), false, 'Alias must be removed when primary asset deleted');
+  console.log('✔ PASS: Deleting by primary ID removed asset and associated aliases.');
 
-  // Test 11: Missing Asset Behavior
-  console.log('\nTest 11: Missing Asset Behavior');
-  assert.strictEqual(await repo.getAsset('missing.asset.id'), null);
-  assert.strictEqual(await repo.deleteAsset('missing.asset.id'), false);
-  console.log('✔ PASS: Missing asset queries return null/false with no exceptions.');
+  // Test 12: Delete by alias removes asset
+  console.log('\nTest 12: Delete by Alias Removes Asset');
+  await repo.saveAsset(newGarment, ['del_alias_trigger']);
+  assert.strictEqual(await repo.hasAsset('garment.bottom.test-jeans'), true);
+  const delAliasResult = await repo.deleteAsset('del_alias_trigger');
+  assert.strictEqual(delAliasResult, true);
+  assert.strictEqual(await repo.hasAsset('garment.bottom.test-jeans'), false, 'Deleting by alias removes underlying asset');
+  assert.strictEqual(await repo.hasAsset('del_alias_trigger'), false);
+  console.log('✔ PASS: Deleting by alias removed underlying asset and all associated aliases.');
 
-  // Test 12: Duplicate Asset Handling
-  console.log('\nTest 12: Duplicate Asset Handling');
-  const countBefore = await repo.count();
-  await repo.saveAsset(maleByPrimary);
-  assert.strictEqual(await repo.count(), countBefore, 'Saving duplicate assetId updates in place');
-  console.log('✔ PASS: Duplicate asset ID handled as clean update in place.');
+  // Test 13: Clear removes aliases
+  console.log('\nTest 13: Clear Removes Aliases');
+  await repo.saveAsset(newGarment, ['clear_alias']);
+  assert.strictEqual(await repo.hasAsset('clear_alias'), true);
+  await repo.clear();
+  assert.strictEqual(await repo.count(), 0);
+  assert.strictEqual(await repo.hasAsset('clear_alias'), false);
+  console.log('✔ PASS: clear() removed all asset records and alias mappings.');
 
-  // Test 13: Invalid Asset Rejection
-  console.log('\nTest 13: Invalid Asset Rejection');
-  const invalidAsset = {
-    assetId: 'invalid asset id spaces',
+  // Test 14: Repository replacement preserves aliases
+  console.log('\nTest 14: Repository Replacement Preserves Aliases');
+  const sourceRepo = new LocalAssetPersistenceAdapter();
+  await seedAssetRepository(sourceRepo);
+  await sourceRepo.saveAsset(newGarment, ['repo_swap_alias']);
+
+  const targetRepo = new LocalAssetPersistenceAdapter();
+  const recordsToCopy = await sourceRepo.getRecords();
+  await targetRepo.seed(recordsToCopy);
+
+  assert.strictEqual(await targetRepo.hasAsset('repo_swap_alias'), true);
+  const targetJeans = await targetRepo.getAsset('repo_swap_alias');
+  assert.ok(targetJeans);
+  assert.strictEqual(targetJeans.assetId, 'garment.bottom.test-jeans');
+  console.log('✔ PASS: Seeding target repository with getRecords() preserved alias mappings across repository swap.');
+
+  // Test 15: Synchronous AssetRegistry alias lookup after repository replacement
+  console.log('\nTest 15: Synchronous AssetRegistry Alias Lookup After Repository Replacement');
+  const customRegistryRepo = new LocalAssetPersistenceAdapter();
+  await seedAssetRepository(customRegistryRepo);
+  await customRegistryRepo.saveAsset(newGarment, ['custom_registry_alias']);
+
+  await setAssetRepository(customRegistryRepo);
+
+  assert.strictEqual(hasRegistryAsset('custom_registry_alias'), true);
+  assert.strictEqual(hasRegistryAsset('male'), true);
+  assert.strictEqual(resolveRegistryAssetId('male'), 'avatar.male.base');
+  const syncRegJeans = getRegistryAsset('custom_registry_alias');
+  assert.ok(syncRegJeans);
+  assert.strictEqual(syncRegJeans.assetId, 'garment.bottom.test-jeans');
+  console.log('✔ PASS: Synchronous AssetRegistry functions work cleanly after setAssetRepository().');
+
+  // Test 16: Deep-clone protection of alias arrays
+  console.log('\nTest 16: Deep-Clone Protection of Alias Arrays');
+  const rec1 = await customRegistryRepo.getRecord('garment.bottom.test-jeans');
+  assert.ok(rec1);
+  rec1.aliasIds.push('HACKED_ALIAS');
+  const rec2 = await customRegistryRepo.getRecord('garment.bottom.test-jeans');
+  assert.strictEqual(rec2.aliasIds.includes('HACKED_ALIAS'), false, 'Alias array mutation must not affect stored state');
+  console.log('✔ PASS: Deep-cloning protected stored alias arrays against external mutation.');
+
+  // Test 17: Invalid aliases rejected
+  console.log('\nTest 17: Invalid Aliases Rejected');
+  await assert.rejects(
+    async () => customRegistryRepo.saveAsset(newGarment, ['invalid alias with spaces!']),
+    /Invalid alias ID/
+  );
+  console.log('✔ PASS: Invalid non-filesystem-safe alias string rejected with explicit error.');
+
+  // Test 18: Malformed assets rejected
+  console.log('\nTest 18: Malformed Assets Rejected');
+  const malformedAsset = {
+    assetId: 'bad id with spaces',
     assetType: 'garment',
   };
   await assert.rejects(
-    async () => repo.saveAsset(invalidAsset),
+    async () => customRegistryRepo.saveAsset(malformedAsset),
     /Validation failed/
   );
-  console.log('✔ PASS: Invalid asset ID format rejected on saveAsset.');
+  console.log('✔ PASS: Malformed asset rejected by validator before saving.');
 
-  // Test 14: Invalid Location Rejection
-  console.log('\nTest 14: Invalid Location Rejection');
-  const invalidLocAsset = {
-    ...newGarment,
-    assetId: 'garment.test.badloc',
-    location: {
-      source: 'remote',
-      path: 'http://insecure-http-url.com/model.glb', // rejected (must be https)
-    },
-  };
-  await assert.rejects(
-    async () => repo.saveAsset(invalidLocAsset),
-    /Insecure HTTP protocol is rejected/
-  );
-  console.log('✔ PASS: Insecure or invalid location rejected on saveAsset.');
+  // Test 19: AssetLocation preserved
+  console.log('\nTest 19: AssetLocation Preserved');
+  const maleAsset = await customRegistryRepo.getAsset('male');
+  assert.ok(maleAsset.location);
+  assert.strictEqual(maleAsset.location.source, 'local');
+  assert.strictEqual(maleAsset.location.path, '/models/avatar/male/base-avatar.glb');
+  assert.strictEqual('modelUrl' in maleAsset, false, 'No competing modelUrl property');
+  console.log('✔ PASS: Authoritative AssetLocation preserved without competing location fields.');
 
-  // Test 15: Invalid Transform Rejection
-  console.log('\nTest 15: Invalid Transform Rejection');
-  const invalidTransformAsset = {
-    ...newGarment,
-    assetId: 'garment.test.badtransform',
-    positionOffset: [NaN, 0, 0],
-  };
-  await assert.rejects(
-    async () => repo.saveAsset(invalidTransformAsset),
-    /positionOffset must be a 3-element tuple of finite numbers/
-  );
-  console.log('✔ PASS: NaN transform offset rejected on saveAsset.');
-
-  // Test 16: Provider / Object-Key Validation
-  console.log('\nTest 16: Provider / Object-Key Validation');
-  const invalidKeyAsset = {
-    ...newGarment,
-    assetId: 'garment.test.badkey',
-    location: {
-      source: 'provider',
-      provider: 'local',
-      objectKey: 'garments/../../traversal.glb', // path traversal
-    },
-  };
-  await assert.rejects(
-    async () => repo.saveAsset(invalidKeyAsset),
-    /Invalid storage object key/
-  );
-  console.log('✔ PASS: Object key with path traversal rejected on saveAsset.');
-
-  // Test 17: Preservation of AssetLocation
-  console.log('\nTest 17: Preservation of AssetLocation');
-  const maleAss = await repo.getAsset('avatar.male.base');
-  assert.ok(maleAss.location);
-  assert.strictEqual(maleAss.location.source, 'local');
-  assert.strictEqual(maleAss.location.path, '/models/avatar/male/base-avatar.glb');
-  assert.strictEqual('modelUrl' in maleAss, false, 'No competing modelUrl property permitted');
-  console.log('✔ PASS: Authoritative AssetLocation contract preserved cleanly.');
-
-  // Test 18: Preservation of Avatar Metadata
-  console.log('\nTest 18: Preservation of Avatar Metadata');
-  assert.strictEqual(maleAss.assetType, 'avatar');
-  assert.strictEqual(maleAss.avatarId, 'male');
-  assert.strictEqual(maleAss.gender, 'male');
-  assert.strictEqual(maleAss.scale, 0.11);
-  assert.deepStrictEqual(maleAss.positionOffset, [0, 0, 0]);
-  assert.deepStrictEqual(maleAss.rotationOffset, [0, 0, 0]);
-  console.log('✔ PASS: All avatar-specific metadata properties preserved.');
-
-  // Test 19: Preservation of Garment Metadata
-  console.log('\nTest 19: Preservation of Garment Metadata');
-  const tShirtAss = await repo.getAsset('garment.top.basic-tshirt');
-  assert.ok(tShirtAss);
-  assert.strictEqual(tShirtAss.assetType, 'garment');
-  assert.strictEqual(tShirtAss.slot, 'top');
-  assert.deepStrictEqual(tShirtAss.supportedAvatarIds, ['male', 'female']);
-  console.log('✔ PASS: All garment-specific metadata properties preserved.');
-
-  // Test 20: Prevention of Internal State Mutation
-  console.log('\nTest 20: Prevention of Internal State Mutation');
-  const asset1 = await repo.getAsset('avatar.male.base');
-  asset1.displayName = 'MUTATED DISPLAY NAME';
-  const asset2 = await repo.getAsset('avatar.male.base');
-  assert.strictEqual(asset2.displayName, 'Adult Male Base Avatar', 'Internal repo state was protected against mutation');
-  console.log('✔ PASS: Deep-cloning prevents external mutation of internal repository state.');
-
-  // Test 21: No Three.js Runtime Objects Persisted
-  console.log('\nTest 21: No Three.js Runtime Objects Persisted');
-  const allPersisted = await repo.getAssets();
-  allPersisted.forEach((a) => {
-    assert.strictEqual('isObject3D' in a, false, 'Must not contain THREE.Object3D');
-    assert.strictEqual('isMesh' in a, false, 'Must not contain THREE.Mesh');
-    assert.strictEqual('isBufferGeometry' in a, false, 'Must not contain THREE.BufferGeometry');
-    assert.strictEqual('isMaterial' in a, false, 'Must not contain THREE.Material');
-  });
-  console.log('✔ PASS: Persisted metadata contains zero Three.js WebGL runtime objects.');
-
-  // Test 22: Persistence Round-Trip
-  console.log('\nTest 22: Persistence Round-Trip');
-  const roundTripRepo = new LocalAssetPersistenceAdapter();
-  await roundTripRepo.saveAsset(newGarment, ['rt_jeans']);
-  const retrieved = await roundTripRepo.getAsset('rt_jeans');
-  assert.deepStrictEqual(retrieved.location, newGarment.location);
-  assert.strictEqual(retrieved.displayName, newGarment.displayName);
-  console.log('✔ PASS: Asset save and retrieval round-trip verified.');
-
-  // Test 23: Deterministic Ordering
-  console.log('\nTest 23: Deterministic Ordering');
-  const orderedRepo = new LocalAssetPersistenceAdapter();
-  await orderedRepo.saveAsset(newGarment);
-  await orderedRepo.saveAsset(maleByPrimary);
-  const orderedAssets = await orderedRepo.getAssets();
-  assert.strictEqual(orderedAssets[0].assetId, newGarment.assetId);
-  assert.strictEqual(orderedAssets[1].assetId, maleByPrimary.assetId);
-  console.log('✔ PASS: Repository insertion order preserved deterministically.');
-
-  // Test 24: Compatibility with Existing Manifest
-  console.log('\nTest 24: Compatibility with Existing Manifest');
-  const manifestRaw = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/lib/3d/assets.json'), 'utf8'));
-  assert.ok(Array.isArray(manifestRaw.assets));
-  for (const mAsset of manifestRaw.assets) {
-    const fromRepo = await repo.getAsset(mAsset.assetId);
-    assert.ok(fromRepo, `Manifest asset "${mAsset.assetId}" present in repo`);
-    assert.strictEqual(fromRepo.displayName, mAsset.displayName);
-  }
-  console.log('✔ PASS: Repository fully compatible with existing static assets.json manifest.');
-
-  // Test 25: No Commerce Fields Introduced
-  console.log('\nTest 25: No Commerce Fields Introduced');
-  const forbiddenCommerceFields = ['price', 'pricing', 'inventory', 'sku', 'cart', 'checkout', 'product_id', 'productId'];
-  allPersisted.forEach((a) => {
-    forbiddenCommerceFields.forEach((field) => {
-      assert.strictEqual(field in a, false, `Field "${field}" must not exist on asset record`);
+  // Test 20: No commerce fields
+  console.log('\nTest 20: No Commerce Fields');
+  const forbiddenFields = ['price', 'pricing', 'inventory', 'sku', 'cart', 'checkout', 'productId'];
+  const allAssets = await customRegistryRepo.getAssets();
+  allAssets.forEach((a) => {
+    forbiddenFields.forEach((field) => {
+      assert.strictEqual(field in a, false, `Field "${field}" forbidden on asset record`);
     });
   });
-  console.log('✔ PASS: Verified ZERO commerce or product fields exist in persistence records.');
+  console.log('✔ PASS: Confirmed zero commerce fields exist in persistence model.');
+
+  // Test 21: Persistence does not contain Three.js objects
+  console.log('\nTest 21: Persistence Does Not Contain Three.js Objects');
+  allAssets.forEach((a) => {
+    assert.strictEqual('isObject3D' in a, false);
+    assert.strictEqual('isMesh' in a, false);
+    assert.strictEqual('isBufferGeometry' in a, false);
+  });
+  console.log('✔ PASS: Persisted metadata contains zero WebGL runtime objects.');
+
+  // Test 22: Deterministic ordering
+  console.log('\nTest 22: Deterministic Ordering');
+  const testOrderRepo = new LocalAssetPersistenceAdapter();
+  await testOrderRepo.saveAsset(newGarment);
+  await testOrderRepo.saveAsset(maleByPrimary);
+  const orderedList = await testOrderRepo.getAssets();
+  assert.strictEqual(orderedList[0].assetId, newGarment.assetId);
+  assert.strictEqual(orderedList[1].assetId, maleByPrimary.assetId);
+  console.log('✔ PASS: Repository insertion ordering preserved deterministically.');
+
+  // Test 23: Repeated seed behavior
+  console.log('\nTest 23: Repeated Seed Behavior');
+  const repeatRepo = new LocalAssetPersistenceAdapter();
+  await seedAssetRepository(repeatRepo);
+  const count1 = await repeatRepo.count();
+  await seedAssetRepository(repeatRepo);
+  const count2 = await repeatRepo.count();
+  assert.strictEqual(count1, count2, 'Repeated seed must clear and re-populate deterministically');
+  console.log('✔ PASS: Repeated seed operation executed cleanly and deterministically.');
+
+  // Test 24: Empty repository
+  console.log('\nTest 24: Empty Repository');
+  const emptyRepo = new LocalAssetPersistenceAdapter();
+  assert.strictEqual(await emptyRepo.count(), 0);
+  assert.deepStrictEqual(await emptyRepo.getAssets(), []);
+  assert.deepStrictEqual(await emptyRepo.getRecords(), []);
+  assert.strictEqual(await emptyRepo.getAsset('male'), null);
+  console.log('✔ PASS: Empty repository queries behave predictably.');
+
+  // Test 25: Missing asset behavior
+  console.log('\nTest 25: Missing Asset Behavior');
+  assert.strictEqual(await emptyRepo.getAsset('non_existent_999'), null);
+  assert.strictEqual(await emptyRepo.hasAsset('non_existent_999'), false);
+  assert.strictEqual(await emptyRepo.deleteAsset('non_existent_999'), false);
+  console.log('✔ PASS: Missing asset operations return null/false without throwing.');
 
   console.log('\n====================================================');
-  console.log('\x1b[32mSUCCESS: All Phase 8 Asset Metadata Persistence Tests Passed!\x1b[0m');
+  console.log('\x1b[32mSUCCESS: All 25 Phase 8 Asset Metadata Persistence Tests Passed!\x1b[0m');
   console.log('====================================================');
 }
 

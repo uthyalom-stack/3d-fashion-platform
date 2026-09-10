@@ -2,6 +2,7 @@ import { Platform3DAsset, Garment3DAsset, Avatar3DAsset, AssetType } from '../..
 import { resolveAssetUrl, validateAssetLocation } from './assetDelivery';
 import { AssetRepository } from './persistence/types';
 import { LocalAssetPersistenceAdapter } from './persistence/localAdapter';
+import { seedAssetRepository } from './persistence/seed';
 import rawAssetsData from './assets.json';
 
 interface RawAssetManifest {
@@ -12,14 +13,17 @@ interface RawAssetManifest {
 const manifest = rawAssetsData as unknown as RawAssetManifest;
 
 /**
- * Primary backing AssetRepository instance and synchronous domain cache.
+ * Primary backing AssetRepository instance and synchronous domain caches.
  */
 let backingRepository: AssetRepository = new LocalAssetPersistenceAdapter();
 const syncCache = new Map<string, Platform3DAsset>();
 const aliasMap = new Map<string, string>(); // aliasId -> primaryAssetId
 
+let initializationPromise: Promise<void> | null = null;
+
 /**
- * Initializes the default registry cache and populates the backing repository with manifest data.
+ * Synchronously populates domain caches for zero-latency module bootstrap
+ * and initiates backing repository seed tracking.
  */
 function initializeDefaultRegistry() {
   syncCache.clear();
@@ -37,23 +41,35 @@ function initializeDefaultRegistry() {
         aliasMap.set(alias, asset.assetId);
       });
     }
+  });
 
-    // Synchronously populate default persistence adapter
-    backingRepository.saveAsset(asset, asset.aliasIds);
+  // Track async repository seed completion
+  initializationPromise = seedAssetRepository(backingRepository).then(() => {
+    return syncFromRepository();
   });
 }
 
-// Seed on module load
+// Bootstrap on module load
 initializeDefaultRegistry();
 
 /**
+ * Guarantees backing repository seed/sync is complete.
+ */
+export async function ensureRegistryInitialized(): Promise<void> {
+  if (initializationPromise) {
+    await initializationPromise;
+  }
+}
+
+/**
  * Configures or swaps the backing AssetRepository implementation for the domain registry.
- * Synchronizes domain cache from the new repository.
+ * Synchronizes domain cache and alias mappings from the new repository.
  */
 export async function setAssetRepository(repository: AssetRepository): Promise<void> {
   if (!repository) {
     throw new Error('AssetRepository instance cannot be null or undefined.');
   }
+  await ensureRegistryInitialized();
   backingRepository = repository;
   await syncFromRepository();
 }
@@ -66,19 +82,19 @@ export function getAssetRepository(): AssetRepository {
 }
 
 /**
- * Synchronizes AssetRegistry's domain cache from the backing repository.
+ * Synchronizes AssetRegistry's domain cache and alias mappings from the backing repository.
  */
 export async function syncFromRepository(): Promise<void> {
+  const records = await backingRepository.getRecords();
   syncCache.clear();
   aliasMap.clear();
 
-  const assets = await backingRepository.getAssets();
-  for (const asset of assets) {
-    syncCache.set(asset.assetId, asset);
-    if ('aliasIds' in asset && Array.isArray((asset as unknown as { aliasIds?: string[] }).aliasIds)) {
-      (asset as unknown as { aliasIds: string[] }).aliasIds.forEach((alias) => {
-        aliasMap.set(alias, asset.assetId);
-      });
+  for (const record of records) {
+    syncCache.set(record.asset.assetId, record.asset);
+    if (record.aliasIds && Array.isArray(record.aliasIds)) {
+      for (const alias of record.aliasIds) {
+        aliasMap.set(alias, record.asset.assetId);
+      }
     }
   }
 }
@@ -111,6 +127,7 @@ export function getAsset(assetId: string): Platform3DAsset | null {
  * Retrieves a 3D asset asynchronously from the backing repository by primary ID or alias.
  */
 export async function getAssetAsync(assetId: string): Promise<Platform3DAsset | null> {
+  await ensureRegistryInitialized();
   return backingRepository.getAsset(assetId);
 }
 
@@ -139,6 +156,7 @@ export function hasAsset(assetId: string): boolean {
  * Checks if an asset exists in the backing repository asynchronously by primary ID or alias.
  */
 export async function hasAssetAsync(assetId: string): Promise<boolean> {
+  await ensureRegistryInitialized();
   return backingRepository.hasAsset(assetId);
 }
 
@@ -153,6 +171,7 @@ export function getAssets(): Platform3DAsset[] {
  * Returns an array of all registered 3D assets asynchronously from the backing repository.
  */
 export async function getAssetsAsync(): Promise<Platform3DAsset[]> {
+  await ensureRegistryInitialized();
   return backingRepository.getAssets();
 }
 
@@ -167,6 +186,7 @@ export function getAssetsByType(assetType: AssetType): Platform3DAsset[] {
  * Filters and returns all 3D assets matching a specific AssetType asynchronously from the backing repository.
  */
 export async function getAssetsByTypeAsync(assetType: AssetType): Promise<Platform3DAsset[]> {
+  await ensureRegistryInitialized();
   return backingRepository.getAssetsByType(assetType);
 }
 
@@ -198,6 +218,7 @@ export function getAvatarAsset(assetId: string): Avatar3DAsset | null {
  * Persists a 3D asset to the backing repository and updates domain cache.
  */
 export async function saveAssetToRepository(asset: Platform3DAsset, aliasIds?: string[]): Promise<void> {
+  await ensureRegistryInitialized();
   await backingRepository.saveAsset(asset, aliasIds);
   await syncFromRepository();
 }
@@ -206,6 +227,7 @@ export async function saveAssetToRepository(asset: Platform3DAsset, aliasIds?: s
  * Deletes a 3D asset from the backing repository and updates domain cache.
  */
 export async function deleteAssetFromRepository(assetId: string): Promise<boolean> {
+  await ensureRegistryInitialized();
   const deleted = await backingRepository.deleteAsset(assetId);
   if (deleted) {
     await syncFromRepository();
