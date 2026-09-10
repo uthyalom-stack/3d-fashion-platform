@@ -1,5 +1,5 @@
 import { Platform3DAsset, Garment3DAsset, Avatar3DAsset, AssetType } from '../../types/asset';
-import { resolveAssetUrl, resolveAssetLocation } from './assetDelivery';
+import { resolveAssetUrl, validateAssetLocation } from './assetDelivery';
 import rawAssetsData from './assets.json';
 
 interface RawAssetManifest {
@@ -15,17 +15,14 @@ const manifest = rawAssetsData as unknown as RawAssetManifest;
 const assetMap = new Map<string, Platform3DAsset>();
 const aliasMap = new Map<string, string>(); // aliasId -> primaryAssetId
 
-// Populate registry maps and ensure locations and modelUrls are fully synchronized
+// Populate registry maps and validate authoritative location
 manifest.assets.forEach((asset) => {
-  const location = asset.location || resolveAssetLocation(asset.modelUrl);
-  const resolvedUrl = resolveAssetUrl({ ...asset, location });
+  const locValidation = validateAssetLocation(asset.location);
+  if (!locValidation.valid) {
+    throw new Error(`Asset "${asset.assetId}" in manifest has invalid location: ${locValidation.errors.join('; ')}`);
+  }
 
-  const initializedAsset: Platform3DAsset = {
-    ...asset,
-    location,
-    modelUrl: resolvedUrl,
-  };
-  assetMap.set(asset.assetId, initializedAsset);
+  assetMap.set(asset.assetId, asset);
   if (asset.aliasIds && Array.isArray(asset.aliasIds)) {
     asset.aliasIds.forEach((alias) => {
       aliasMap.set(alias, asset.assetId);
@@ -57,7 +54,7 @@ export function getAsset(assetId: string): Platform3DAsset | null {
 }
 
 /**
- * Resolves the delivery URL for a registered asset by ID or alias.
+ * Resolves the delivery URL for a registered asset by ID or alias derived from its authoritative location.
  * Throws explicit error if asset is not found in registry.
  */
 export function getAssetDeliveryUrl(assetId: string): string {

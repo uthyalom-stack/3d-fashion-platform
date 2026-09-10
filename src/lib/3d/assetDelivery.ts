@@ -75,9 +75,8 @@ export function validateAssetLocation(location: unknown): LocationValidationResu
 }
 
 /**
- * Derives or validates an AssetLocation from an asset object or URL path.
- * If location is defined on the asset, it is validated and returned.
- * If location is omitted, resolves location automatically from asset.modelUrl (defaulting to 'local' for relative paths and 'remote' for https:// URLs).
+ * Derives or validates an AssetLocation from an asset object, AssetLocation, or URL path string.
+ * `location` on asset is authoritative.
  */
 export function resolveAssetLocation(assetOrLocation: Base3DAsset | AssetLocation | string): AssetLocation {
   if (typeof assetOrLocation === 'string') {
@@ -97,15 +96,12 @@ export function resolveAssetLocation(assetOrLocation: Base3DAsset | AssetLocatio
     return loc;
   }
 
-  if ('modelUrl' in assetOrLocation && typeof assetOrLocation.modelUrl === 'string') {
-    if (assetOrLocation.location) {
-      const validation = validateAssetLocation(assetOrLocation.location);
-      if (!validation.valid) {
-        throw new Error(`Asset "${assetOrLocation.assetId}" has invalid location: ${validation.errors.join('; ')}`);
-      }
-      return assetOrLocation.location;
+  if ('location' in assetOrLocation && assetOrLocation.location) {
+    const validation = validateAssetLocation(assetOrLocation.location);
+    if (!validation.valid) {
+      throw new Error(`Asset "${assetOrLocation.assetId}" has invalid location: ${validation.errors.join('; ')}`);
     }
-    return resolveAssetLocation(assetOrLocation.modelUrl);
+    return assetOrLocation.location;
   }
 
   throw new Error('Unable to resolve AssetLocation from provided parameter.');
@@ -113,7 +109,7 @@ export function resolveAssetLocation(assetOrLocation: Base3DAsset | AssetLocatio
 
 /**
  * Deterministic, side-effect-free Asset Delivery Resolver.
- * Resolves an AssetLocation or Platform3DAsset into the runtime model URL that ModelLoader / useGLTF consumes.
+ * Resolves an AssetLocation or Base3DAsset into the runtime model URL that ModelLoader / useGLTF consumes.
  */
 export function resolveAssetUrl(assetOrLocation: Base3DAsset | AssetLocation | string): string {
   const location = resolveAssetLocation(assetOrLocation);

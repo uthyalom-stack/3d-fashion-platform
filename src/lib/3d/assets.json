@@ -8,7 +8,6 @@
       "schemaVersion": "1.0",
       "version": "1.0.0",
       "displayName": "Adult Male Base Avatar",
-      "modelUrl": "/models/avatar/male/base-avatar.glb",
       "location": {
         "source": "local",
         "path": "/models/avatar/male/base-avatar.glb"
@@ -32,7 +31,6 @@
       "schemaVersion": "1.0",
       "version": "1.0.0",
       "displayName": "Adult Female Base Avatar",
-      "modelUrl": "/models/avatar/female/base-avatar.glb",
       "location": {
         "source": "local",
         "path": "/models/avatar/female/base-avatar.glb"
@@ -56,7 +54,6 @@
       "schemaVersion": "1.0",
       "version": "1.0.0",
       "displayName": "Basic Short-Sleeve T-Shirt",
-      "modelUrl": "/models/garment/top/GARMENT_top_basic_tshirt.glb",
       "location": {
         "source": "local",
         "path": "/models/garment/top/GARMENT_top_basic_tshirt.glb"

@@ -4,7 +4,7 @@ This document describes the vendor-neutral 3D asset storage and delivery abstrac
 
 ---
 
-## 1. Architectural Architecture Flow
+## 1. Architecture Flow
 
 The platform separates what an asset is, where it is stored, how its delivery URL is resolved, and how the model is loaded:
 
@@ -27,8 +27,8 @@ Three.js Runtime / WebGL Canvas
 ### Layer Responsibilities
 
 1. **Asset Metadata & Registry (`src/lib/3d/assetRegistry.ts`)**: Authoritative single source of truth for platform asset metadata, performance metrics, supported avatar IDs, and slots. Decoupled from commerce or vendor specifics.
-2. **Asset Location Contract (`AssetLocation` in `src/types/asset.ts`)**: Specifies the asset storage type (`'local'` | `'remote'`) and location path without credential or provider coupling.
-3. **Asset Delivery Resolver (`src/lib/3d/assetDelivery.ts`)**: Deterministic, side-effect-free URL resolution and protocol/path validation module.
+2. **Asset Location Contract (`AssetLocation` in `src/types/asset.ts`)**: Authoritative location representation specifying the asset storage type (`'local'` | `'remote'`) and location path without credential or provider coupling. Eliminates competing `modelUrl` properties in the core asset manifest contract.
+3. **Asset Delivery Resolver (`src/lib/3d/assetDelivery.ts`)**: Deterministic, side-effect-free URL resolution and protocol/path validation module (`resolveAssetUrl`).
 4. **Model Loader (`src/components/3d/ModelLoader.tsx`)**: Primary GLB/glTF runtime loading boundary powered by `@react-three/drei` (`useGLTF`) with strict Three.js resource ownership and material cloning safeguards.
 
 ---
@@ -38,7 +38,7 @@ Three.js Runtime / WebGL Canvas
 The platform supports two primary asset location sources:
 
 ### Local Static Source (`source: 'local'`)
-- Points to static public assets hosted within the web application repository (e.g., `/public/models/avatar/male/base-avatar.glb`).
+- Points to static public assets hosted within the web application repository (e.g., `/models/avatar/male/base-avatar.glb`).
 - **Validation**: Rejects empty strings, HTTP/HTTPS absolute URLs, `javascript:` or `data:` inline schemes, and illegal directory traversal sequences (`../`).
 - **Resolution**: Resolves into normalized relative web paths (e.g. `/models/...`) consumable directly by standard browser fetchers.
 
@@ -49,7 +49,13 @@ The platform supports two primary asset location sources:
 
 ---
 
-## 3. Extensibility for Future Cloud Storage Providers
+## 3. Generic Alias Resolution
+
+Asset aliases (such as `GARMENT_top_basic_tshirt` or `male`) are stored in `assets.json` under `aliasIds` and registered generically in `assetRegistry.ts` and `garmentRegistry.ts`. No garment-specific or avatar-specific hardcoded alias mapping logic exists in the component or registry code.
+
+---
+
+## 4. Extensibility for Future Cloud Storage Providers
 
 The delivery resolver is deliberately decoupled from cloud provider SDKs and paid SaaS dependencies.
 
@@ -67,7 +73,7 @@ Object Storage / CDN (S3 / R2 / CDN)
 
 ---
 
-## 4. Security Boundaries & URL Validation
+## 5. Security Boundaries & URL Validation
 
 - **URL Validation is NOT Authorization**: The `validateAssetLocation` helper verifies URL syntax, protocol policies (HTTPS-only for remote assets), and path safety rules. It does not perform user authentication, entitlement checks, or signed URL creation.
 - **No Credentials or Secrets**: Asset location metadata never contains API keys, storage bucket access keys, authorization headers, or database IDs.
@@ -75,7 +81,7 @@ Object Storage / CDN (S3 / R2 / CDN)
 
 ---
 
-## 5. Verification & Testing
+## 6. Verification & Testing
 
 Platform storage and delivery functionality is verified via:
 
@@ -83,4 +89,4 @@ Platform storage and delivery functionality is verified via:
 node scripts/test-asset-delivery.js
 ```
 
-This test suite covers local path resolution, remote HTTPS URLs, malformed/unsafe scheme rejection, registry delivery lookup integration, and asset location validation rules.
+This test suite covers location single-source-of-truth verification, generic alias resolution, local path resolution, remote HTTPS URLs, malformed/unsafe scheme rejection, registry delivery lookup integration, and asset location validation rules.

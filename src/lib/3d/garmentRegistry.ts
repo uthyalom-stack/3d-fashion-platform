@@ -8,6 +8,7 @@ export const DEFAULT_GARMENT_ID = DEFAULT_GARMENT_ASSET_ID;
 
 /**
  * Builds static garment registry derived directly from authoritative platform AssetRegistry.
+ * Generates lookup entries generically from asset IDs and any manifest `aliasIds`.
  */
 function buildGarmentRegistry(): Record<string, GarmentConfig> {
   const garmentAssets = getAssetsByType('garment') as Garment3DAsset[];
@@ -29,13 +30,20 @@ function buildGarmentRegistry(): Record<string, GarmentConfig> {
     // Primary asset ID entry
     registry[asset.assetId] = config;
 
-    // Alias compatibility entry if known alias exists
-    if (asset.assetId === 'garment.top.basic-tshirt') {
-      registry['GARMENT_top_basic_tshirt'] = config;
+    // Generic alias entries directly from authoritative manifest aliasIds
+    const rawAsset = asset as Platform3DAssetWithAliases;
+    if (rawAsset.aliasIds && Array.isArray(rawAsset.aliasIds)) {
+      rawAsset.aliasIds.forEach((alias) => {
+        registry[alias] = config;
+      });
     }
   });
 
   return registry;
+}
+
+interface Platform3DAssetWithAliases extends Garment3DAsset {
+  aliasIds?: string[];
 }
 
 /**
@@ -45,7 +53,7 @@ function buildGarmentRegistry(): Record<string, GarmentConfig> {
 export const GARMENT_REGISTRY: Record<string, GarmentConfig> = buildGarmentRegistry();
 
 /**
- * Retrieves garment configuration by asset ID or alias.
+ * Retrieves garment configuration by asset ID or alias generically.
  */
 export function getGarmentConfig(garmentId: string): GarmentConfig | null {
   if (GARMENT_REGISTRY[garmentId]) {

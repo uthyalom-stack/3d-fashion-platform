@@ -37,6 +37,7 @@ export interface PerformanceMetadata {
 /**
  * Generic 3D Asset Contract (Phase 5 & 6 Foundation)
  * Pure 3D asset metadata contract, strictly decoupled from commerce/product logic.
+ * `location` is the single authoritative asset-location representation.
  */
 export interface Base3DAsset {
   assetId: string;
@@ -44,8 +45,7 @@ export interface Base3DAsset {
   schemaVersion: string; // e.g. '1.0'
   version: string;       // e.g. '1.0.0'
   displayName: string;
-  modelUrl: string;      // Backwards-compatible runtime URL
-  location?: AssetLocation; // Explicit storage location definition
+  location: AssetLocation; // Authoritative location definition
   metadata?: PerformanceMetadata & Record<string, unknown>;
 }
 

@@ -9,6 +9,7 @@ import { GarmentSlot, OutfitState, CANONICAL_GARMENT_SLOTS } from '@/types/garme
 import { OutfitManager, createEmptyOutfitState } from '@/lib/3d/outfitManager';
 import { GARMENT_REGISTRY, DEFAULT_GARMENT_ID } from '@/lib/3d/garmentRegistry';
 import { getAssets, getAsset } from '@/lib/3d/assetRegistry';
+import { resolveAssetUrl } from '@/lib/3d/assetDelivery';
 import { Platform3DAsset, Garment3DAsset } from '@/types/asset';
 import styles from './studio.module.css';
 
@@ -116,8 +117,9 @@ export default function StudioPage() {
     } else if (selectedAsset.assetType === 'avatar') {
       handleAvatarChange(selectedAsset.assetId.includes('female') ? 'female' : 'male');
     } else {
-      setActiveModelUrl(selectedAsset.modelUrl);
-      setStatusMessage(`Loaded asset model URL: ${selectedAsset.modelUrl}`);
+      const deliveryUrl = resolveAssetUrl(selectedAsset);
+      setActiveModelUrl(deliveryUrl);
+      setStatusMessage(`Loaded asset model URL: ${deliveryUrl}`);
     }
   };
 
