@@ -34,7 +34,7 @@ The core platform remains vendor-agnostic. All concrete storage operations imple
 export interface AssetStorageProvider {
   readonly providerId: string;
   isConfigured(): boolean;
-  resolveObjectUrl(objectKey: string, location?: AssetLocation): string;
+  resolveObjectUrl(objectKey: string): string;
 }
 ```
 
@@ -58,7 +58,18 @@ export interface AssetLocation {
 
 ---
 
-## 4. Storage Providers
+## 4. Client/Server Dependency Boundary & Security
+
+To guarantee that storage credentials never leak into client JavaScript bundles:
+
+1. **Client Public Config (`clientConfig.ts`)**: Used by browser-facing 3D delivery paths (`assetDelivery.ts`, `providerRegistry.ts`, `r2Provider.ts`). Resolves only public delivery settings (e.g., `STORAGE_R2_PUBLIC_DOMAIN`).
+2. **Server-Only Credentials (`serverConfig.ts`)**: Contains administrative storage credentials (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, etc.). Kept strictly behind server boundaries and never imported by browser-facing modules.
+3. **No `NEXT_PUBLIC_` Secrets**: Enforced by security checks (`enforceServerSecurityBoundaries()`), preventing accidental bundling of secrets into client JavaScript.
+4. **No Client SDK**: The browser never initializes an S3 client or communicates directly using R2 access keys.
+
+---
+
+## 5. Storage Providers
 
 ### Local Provider (`local`)
 * Handles static local public assets (e.g. `/models/avatar/male/base-avatar.glb`).
@@ -71,15 +82,7 @@ export interface AssetLocation {
 
 ---
 
-## 5. Security & Browser/Server Boundaries
-
-* **Zero Credential Exposure**: Storage API access keys (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) remain strictly server-side.
-* **No `NEXT_PUBLIC_` Secrets**: Enforced by security checks (`enforceSecurityBoundaries()`), preventing accidental bundling of secrets into client JavaScript.
-* **No Client SDK**: The browser never initializes an S3 client or communicates directly with R2 access keys.
-
----
-
-## 6. Deterministic Object Key Convention
+## 6. Deterministic Object Key Convention & Hardened Traversal Sanitization
 
 Keys must be filesystem-safe, predictable, and free of path traversal (`..`), query parameters (`?`), or executable schemes (`javascript:`, `data:`).
 
@@ -88,13 +91,16 @@ Standard formatting:
 * **Garments**: `garments/<slot>/<assetId>/v<version>/<filename>`
 * **Others**: `<assetType>s/<assetId>/v<version>/<filename>`
 
+### Traversal Sanitization Rules
+`normalizeObjectKey` normalizes backslashes to forward slashes and splits path segments, strictly rejecting keys if any segment equals `..` or `.`, including terminal traversal cases (`avatars/male/..`).
+
 ---
 
 ## 7. Explicit Error Handling
 
 The storage layer distinguishes between distinct failure modes without silent fallbacks:
 * `Unsupported storage provider`: Unregistered provider ID specified.
-* `Storage provider is not configured`: R2 configuration missing.
+* `Storage provider is not configured`: R2 public delivery configuration missing.
 * `Invalid storage object key`: Illegal key format or traversal attempt.
 * `Storage public delivery URL is not configured`: Missing public domain setting.
 

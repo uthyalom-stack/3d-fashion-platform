@@ -1,11 +1,11 @@
 import { AssetStorageProvider } from './types';
 import { LocalStorageProvider } from './localProvider';
 import { R2StorageProvider } from './r2Provider';
-import { enforceSecurityBoundaries } from './config';
 
 /**
  * Deterministic Storage Provider Registry.
  * Central registry mapping provider identifiers ('local', 'r2', etc.) to concrete AssetStorageProvider instances.
+ * Client-safe: Contains zero references to server-side credentials or secret environment variables.
  */
 class StorageProviderRegistry {
   private providers: Map<string, AssetStorageProvider> = new Map();
@@ -32,8 +32,6 @@ class StorageProviderRegistry {
    * Does NOT perform silent fallback.
    */
   getProvider(providerId: string): AssetStorageProvider {
-    enforceSecurityBoundaries();
-
     if (!providerId || typeof providerId !== 'string' || providerId.trim() === '') {
       throw new Error('Unsupported asset storage provider: Provider ID must be specified.');
     }

@@ -1,31 +1,30 @@
 import { AssetStorageProvider } from './types';
-import { getR2ConfigFromEnv, R2EnvironmentConfig } from './config';
+import { getPublicStorageConfig, PublicStorageConfig } from './clientConfig';
 import { normalizeObjectKey } from './objectKey';
 
 /**
- * Concrete Storage Provider adapter for Cloudflare R2 / S3-compatible Object Storage.
- * Generates browser-safe public delivery URLs deterministically using public delivery domain configuration.
- * Separates storage API credentials from public browser delivery endpoint.
+ * Concrete Storage Provider adapter for Cloudflare R2 / S3-compatible Public Asset Delivery.
+ * Client-safe: Resolves browser-accessible asset URLs using public domain configuration without referencing server credentials.
  */
 export class R2StorageProvider implements AssetStorageProvider {
   readonly providerId = 'r2';
-  private overrideConfig?: Partial<R2EnvironmentConfig>;
+  private overrideConfig?: Partial<PublicStorageConfig>;
 
-  constructor(customConfig?: Partial<R2EnvironmentConfig>) {
+  constructor(customConfig?: Partial<PublicStorageConfig>) {
     if (customConfig) {
       this.overrideConfig = customConfig;
     }
   }
 
-  private getConfig(): Partial<R2EnvironmentConfig> {
-    if (this.overrideConfig) {
-      return this.overrideConfig;
+  private getConfig(): PublicStorageConfig {
+    if (this.overrideConfig && typeof this.overrideConfig.publicDomain === 'string') {
+      return { publicDomain: this.overrideConfig.publicDomain };
     }
-    return getR2ConfigFromEnv();
+    return getPublicStorageConfig();
   }
 
   /**
-   * For public browser delivery URL generation, at minimum a public domain or bucket delivery domain is required.
+   * For public browser delivery URL generation, a public delivery domain is required.
    */
   isConfigured(): boolean {
     const config = this.getConfig();

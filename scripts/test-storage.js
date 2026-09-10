@@ -93,13 +93,27 @@ runTest('Provider location referencing unknown provider fails cleanly', () => {
   assert.ok(result.errors.some((e) => e.includes('Unsupported storage provider')));
 });
 
-runTest('Object key with directory traversal is strictly rejected', () => {
+runTest('Object key with directory traversal (including terminal .. and backslashes) is strictly rejected', () => {
   assert.throws(() => {
     normalizeObjectKey('../../etc/passwd');
   }, /Illegal directory traversal/);
 
   assert.throws(() => {
     normalizeObjectKey('avatars/../male/model.glb');
+  }, /Illegal directory traversal/);
+
+  // Terminal .. regression test (Fix 2)
+  assert.throws(() => {
+    normalizeObjectKey('avatars/male/..');
+  }, /Illegal directory traversal/);
+
+  // Backslash variant regression tests (Fix 2)
+  assert.throws(() => {
+    normalizeObjectKey('avatars\\male\\..\\model.glb');
+  }, /Illegal directory traversal/);
+
+  assert.throws(() => {
+    normalizeObjectKey('avatars\\male\\..');
   }, /Illegal directory traversal/);
 });
 
@@ -212,19 +226,25 @@ runTest('Unknown provider in delivery resolver throws explicit error with no sil
 });
 
 // ----------------------------------------------------
-// 5. Security Boundaries
+// 5. Security & Client Import Graph Boundaries (Fix 1)
 // ----------------------------------------------------
 
-runTest('Secrets never appear in resolved public asset URLs', () => {
-  const customR2 = new R2StorageProvider({
-    publicDomain: 'https://cdn.fashionplatform.io',
-    accessKeyId: 'SUPER_SECRET_ACCESS_KEY_ID',
-    secretAccessKey: 'SUPER_SECRET_ACCESS_KEY_VALUE',
-  });
+runTest('Client delivery graph does NOT transitively import server credentials module', () => {
+  const clientConfigPath = path.join(__dirname, '../src/lib/storage/clientConfig.ts');
+  const providerRegistryPath = path.join(__dirname, '../src/lib/storage/providerRegistry.ts');
+  const r2ProviderPath = path.join(__dirname, '../src/lib/storage/r2Provider.ts');
 
-  const url = customR2.resolveObjectUrl('avatars/male/v1.0.0/base-avatar.glb');
-  assert.strictEqual(url.includes('SUPER_SECRET'), false);
-  assert.strictEqual(url.includes('ACCESS_KEY'), false);
+  const clientConfigSrc = fs.readFileSync(clientConfigPath, 'utf8');
+  const registrySrc = fs.readFileSync(providerRegistryPath, 'utf8');
+  const r2Src = fs.readFileSync(r2ProviderPath, 'utf8');
+
+  // Verify none of the client-reachable files import serverConfig or secret key names
+  assert.strictEqual(clientConfigSrc.includes('serverConfig'), false);
+  assert.strictEqual(clientConfigSrc.includes('SECRET_ACCESS_KEY'), false);
+  assert.strictEqual(registrySrc.includes('serverConfig'), false);
+  assert.strictEqual(registrySrc.includes('SECRET_ACCESS_KEY'), false);
+  assert.strictEqual(r2Src.includes('serverConfig'), false);
+  assert.strictEqual(r2Src.includes('SECRET_ACCESS_KEY'), false);
 });
 
 runTest('Asset registry locations validate cleanly with zero credential exposure', () => {

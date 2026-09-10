@@ -30,16 +30,23 @@ export function normalizeObjectKey(rawKey: unknown): string {
     throw new Error('Invalid storage object key: Object key cannot contain query parameters or URL fragments.');
   }
 
-  // Prevent directory traversal attacks
-  if (clean.includes('../') || clean.includes('..\\') || clean === '..') {
-    throw new Error('Invalid storage object key: Illegal directory traversal attempt detected ("..").');
+  // Normalize slashes first (convert all backslashes to forward slashes)
+  const normalizedSlashes = clean.replace(/\\/g, '/');
+
+  // Split into path segments and check for directory traversal segments
+  const segments = normalizedSlashes.split('/');
+  for (const segment of segments) {
+    if (segment === '..' || segment === '.') {
+      throw new Error('Invalid storage object key: Illegal directory traversal attempt detected ("..").');
+    }
   }
 
-  // Normalize slashes and strip leading slash
-  clean = clean.replace(/\\/g, '/');
-  while (clean.startsWith('/')) {
+  // Strip leading slashes for object storage keys
+  while (clean.startsWith('/') || clean.startsWith('\\')) {
     clean = clean.slice(1);
   }
+
+  clean = clean.replace(/\\/g, '/');
 
   if (clean.trim() === '') {
     throw new Error('Invalid storage object key: Object key resulted in empty string after normalization.');
