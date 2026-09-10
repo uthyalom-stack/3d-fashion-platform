@@ -43,6 +43,7 @@ const {
 
 const { GARMENT_REGISTRY } = require('../src/lib/3d/garmentRegistry');
 const { AVATAR_REGISTRY } = require('../src/components/3d/Avatar');
+const { resolveAssetUrl } = require('../src/lib/3d/assetDelivery');
 
 function getPngDimensions(buffer) {
   if (buffer.length >= 24 && buffer.toString('hex', 0, 8) === '89504e470d0a1a0a') {
@@ -212,8 +213,9 @@ function runAssetRegistryTests() {
   // 14. Model URL Resolution
   console.log('\nTest 14: Model URL Resolution');
   loadedAssets.forEach((asset) => {
-    assert.ok(asset.modelUrl.startsWith('/models/'), `Model URL "${asset.modelUrl}" must start with /models/`);
-    const relPath = asset.modelUrl.replace(/^\//, '');
+    const resolvedUrl = resolveAssetUrl(asset);
+    assert.ok(resolvedUrl.startsWith('/models/'), `Model URL "${resolvedUrl}" must start with /models/`);
+    const relPath = resolvedUrl.replace(/^\//, '');
     const absPath = path.join(__dirname, '../public', relPath);
     assert.ok(fs.existsSync(absPath), `Target GLB file must exist on disk at ${absPath}`);
   });
@@ -278,7 +280,8 @@ function runAssetRegistryTests() {
   console.log('----------------------------------------------------');
 
   loadedAssets.forEach((asset) => {
-    const relPath = asset.modelUrl.replace(/^\//, '');
+    const resolvedUrl = resolveAssetUrl(asset);
+    const relPath = resolvedUrl.replace(/^\//, '');
     const absPath = path.join(__dirname, '../public', relPath);
     const buffer = fs.readFileSync(absPath);
     const stats = fs.statSync(absPath);

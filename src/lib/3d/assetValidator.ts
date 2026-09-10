@@ -1,5 +1,6 @@
 import { Platform3DAsset, Garment3DAsset, Avatar3DAsset, AssetType } from '../../types/asset';
 import { CANONICAL_GARMENT_SLOTS } from '../../types/garment';
+import { validateAssetLocation } from './assetDelivery';
 
 export interface ValidationResult {
   valid: boolean;
@@ -39,6 +40,11 @@ export function validateAsset(
     return { valid: false, errors: ['Asset object is null or undefined.'], warnings: [] };
   }
 
+  // Check for competing modelUrl field on Base3DAsset (Issue 1 fix verification)
+  if ('modelUrl' in asset && asset.modelUrl !== undefined) {
+    errors.push(`Asset "${asset.assetId}" contains competing "modelUrl" field. Location is the single authoritative location contract.`);
+  }
+
   // 1. Asset ID
   if (!asset.assetId || typeof asset.assetId !== 'string' || asset.assetId.trim() === '') {
     errors.push('Asset assetId must be a non-empty string.');
@@ -56,9 +62,14 @@ export function validateAsset(
     errors.push('Asset displayName must be a non-empty string.');
   }
 
-  // 4. Model URL
-  if (!asset.modelUrl || typeof asset.modelUrl !== 'string' || asset.modelUrl.trim() === '') {
-    errors.push('Asset modelUrl must be a non-empty string.');
+  // 4. Asset Location (Authoritative Phase 6 Location Contract)
+  if (!asset.location) {
+    errors.push(`Asset "${asset.assetId}" missing required authoritative "location" property.`);
+  } else {
+    const locResult = validateAssetLocation(asset.location);
+    if (!locResult.valid) {
+      errors.push(...locResult.errors.map((e) => `Asset "${asset.assetId}" location error: ${e}`));
+    }
   }
 
   // 5. Schema & Version

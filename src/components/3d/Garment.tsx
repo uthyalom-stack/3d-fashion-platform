@@ -4,6 +4,7 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { ModelLoader } from './ModelLoader';
 import { GARMENT_REGISTRY } from '../../lib/3d/garmentRegistry';
+import { resolveAssetUrl } from '../../lib/3d/assetDelivery';
 import {
   resolveGarmentTransform,
   resolveAttachmentAnchor,
@@ -114,6 +115,8 @@ export function Garment({
     return null;
   }
 
+  const modelDeliveryUrl = resolveAssetUrl(config.modelUrl);
+
   return (
     <group
       ref={garmentGroupRef}
@@ -121,7 +124,7 @@ export function Garment({
       key={`${config.id}-${avatarId}`}
     >
       <ModelLoader
-        url={config.modelUrl}
+        url={modelDeliveryUrl}
         castShadow={castShadow}
         receiveShadow={receiveShadow}
         onLoad={onLoad}
@@ -133,6 +136,6 @@ export function Garment({
 Garment.preload = (garmentId: string) => {
   const config = GARMENT_REGISTRY[garmentId];
   if (config) {
-    ModelLoader.preload(config.modelUrl);
+    ModelLoader.preload(resolveAssetUrl(config.modelUrl));
   }
 };
