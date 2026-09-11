@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
 import { Scene } from '@/components/3d/Scene';
@@ -11,6 +11,7 @@ import { GARMENT_REGISTRY, DEFAULT_GARMENT_ID } from '@/lib/3d/garmentRegistry';
 import { getAssets, getAsset } from '@/lib/3d/assetRegistry';
 import { resolveAssetUrl } from '@/lib/3d/assetDelivery';
 import { Platform3DAsset, Garment3DAsset } from '@/types/asset';
+import { LocalCatalogAdapter, PlatformCatalogProduct } from '@/lib/integrations';
 import styles from './studio.module.css';
 
 function getInitialOutfitState(): OutfitState {
@@ -33,6 +34,24 @@ export default function StudioPage() {
   );
 
   const selectedAsset: Platform3DAsset | null = getAsset(selectedAssetId);
+
+  // Phase 10 Catalog Handoff Developer Inspection State
+  const [catalogAdapter] = useState(() => new LocalCatalogAdapter());
+  const [catalogProducts, setCatalogProducts] = useState<PlatformCatalogProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string>('');
+
+  useEffect(() => {
+    catalogAdapter.getProducts().then((products) => {
+      setCatalogProducts(products);
+      if (products.length > 0) {
+        setSelectedProductId(products[0].externalProductId);
+      }
+    });
+  }, [catalogAdapter]);
+
+  const selectedCatalogProduct = catalogProducts.find(
+    (p) => p.externalProductId === selectedProductId
+  );
 
   // Initialize Outfit Manager instance lazily
   const [outfitManager] = useState<OutfitManager>(
@@ -120,6 +139,37 @@ export default function StudioPage() {
       const deliveryUrl = resolveAssetUrl(selectedAsset);
       setActiveModelUrl(deliveryUrl);
       setStatusMessage(`Loaded asset model URL: ${deliveryUrl}`);
+    }
+  };
+
+  const handleResolveCatalogProductToViewer = () => {
+    if (!selectedCatalogProduct) return;
+
+    if (!selectedCatalogProduct.representation) {
+      setStatusMessage(`Product "${selectedCatalogProduct.title}" has no 3D representation.`);
+      return;
+    }
+
+    const targetAssetId = selectedCatalogProduct.representation.assetId;
+    const resolvedAsset = getAsset(targetAssetId);
+
+    if (!resolvedAsset) {
+      setStatusMessage(`Integration Contract Error: Asset ID "${targetAssetId}" not found in Asset Registry.`);
+      return;
+    }
+
+    if (resolvedAsset.assetType !== 'garment') {
+      setStatusMessage(`Integration Contract Error: Asset ID "${targetAssetId}" is type "${resolvedAsset.assetType}". Only garment assets can be equipped from catalog products.`);
+      return;
+    }
+
+    const gAsset = resolvedAsset as Garment3DAsset;
+    const result = outfitManager.equip(gAsset.slot, gAsset.assetId);
+    if (result.valid) {
+      setOutfitState(outfitManager.getOutfitState());
+      setStatusMessage(`Catalog item resolved -> Equipped 3D Garment "${gAsset.displayName}" (${gAsset.assetId})`);
+    } else {
+      setStatusMessage(`Catalog item equip failed: ${result.error}`);
     }
   };
 
@@ -225,6 +275,64 @@ export default function StudioPage() {
         <div className={styles.overlay} style={{ pointerEvents: 'auto', maxWidth: '340px' }}>
           <div>
             <strong>Active Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
+          </div>
+
+          {/* Catalog Integration Developer Inspection (Phase 10 Foundation) */}
+          <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e5e5ea', paddingTop: '0.5rem' }}>
+            <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>Catalog Integration Handoff:</strong>
+            <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '2px', marginBottom: '4px' }}>
+              Adapter: <strong>LocalCatalogAdapter</strong> | Items: <strong>{catalogProducts.length}</strong>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', marginTop: '0.25rem' }}>
+              <select
+                value={selectedProductId}
+                onChange={(e) => setSelectedProductId(e.target.value)}
+                style={{
+                  flex: 1,
+                  fontSize: '0.75rem',
+                  padding: '2px 4px',
+                  borderRadius: '4px',
+                  border: '1px solid #ccc',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                {catalogProducts.map((product) => (
+                  <option key={product.externalProductId} value={product.externalProductId}>
+                    {product.title} (${product.price.toFixed(2)})
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={handleResolveCatalogProductToViewer}
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  border: '1px solid #34c759',
+                  backgroundColor: '#34c759',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                }}
+              >
+                Resolve
+              </button>
+            </div>
+
+            {selectedCatalogProduct && (
+              <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '0.25rem', lineHeight: 1.3 }}>
+                <div><strong>External Product ID:</strong> {selectedCatalogProduct.externalProductId}</div>
+                <div><strong>Brand:</strong> {selectedCatalogProduct.brand || 'N/A'} | <strong>Price:</strong> ${selectedCatalogProduct.price} {selectedCatalogProduct.currency}</div>
+                <div><strong>Status:</strong> {selectedCatalogProduct.availability}</div>
+                {selectedCatalogProduct.representation ? (
+                  <div style={{ color: '#0071e3', marginTop: '2px' }}>
+                    <strong>Mapped Asset ID:</strong> {selectedCatalogProduct.representation.assetId} ({selectedCatalogProduct.representation.garmentSlot})
+                  </div>
+                ) : (
+                  <div style={{ color: '#8e8e93', marginTop: '2px' }}>[No 3D Representation Available]</div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 3D Asset Registry & Persistence Developer Inspection */}
