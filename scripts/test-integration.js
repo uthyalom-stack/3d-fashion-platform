@@ -42,6 +42,8 @@ const {
   getAssetDeliveryUrl,
 } = require('../src/lib/3d/assetRegistry');
 
+const { OutfitManager, createEmptyOutfitState } = require('../src/lib/3d/outfitManager');
+
 async function runIntegrationTests() {
   console.log('====================================================');
   console.log('Phase 10 — Integration Contract & Catalog Handoff Tests');
@@ -61,11 +63,13 @@ async function runIntegrationTests() {
     },
   };
 
-  // 1. Valid product contract
-  console.log('Test 1: Valid Product Contract');
+  // 1. Valid product contract using ValidationResult
+  console.log('Test 1: Valid Product Contract (ValidationResult)');
   const res1 = validateCatalogProduct(validBaseProduct);
+  assert.strictEqual(typeof res1.valid, 'boolean');
+  assert.ok(Array.isArray(res1.errors));
   assert.strictEqual(res1.valid, true, `Valid product must pass validation: ${res1.errors.join('; ')}`);
-  console.log('✔ PASS: Valid product contract passed validation.');
+  console.log('✔ PASS: Valid product contract passed validation using ValidationResult.');
 
   // 2. Invalid product ID
   console.log('\nTest 2: Invalid External Product ID');
@@ -171,9 +175,9 @@ async function runIntegrationTests() {
   // 13. Product listing
   console.log('\nTest 13: Product Listing');
   const allProds = await adapter.getProducts();
-  assert.ok(allProds.length >= 3);
+  assert.ok(allProds.length >= 2);
   const availProds = await adapter.getProducts({ availability: 'available' });
-  assert.ok(availProds.length >= 3);
+  assert.ok(availProds.length >= 2);
   const only3DProds = await adapter.getProducts({ has3D: true });
   assert.ok(only3DProds.every((p) => p.representation !== null));
   console.log('✔ PASS: Product listing with filtering query criteria verified.');
@@ -268,8 +272,98 @@ async function runIntegrationTests() {
   assert.strictEqual(customProd.title, 'Custom Product');
   console.log('✔ PASS: LocalCatalogAdapter handles custom fixtures deterministically.');
 
+  // Additional Regression Tests for Review Issues
+  console.log('\n----------------------------------------------------');
+  console.log('Additional Regression Tests (Review Feedback Fixes)');
+  console.log('----------------------------------------------------');
+
+  // Test 21: Local catalog contains no avatar products
+  console.log('Test 21: Local Catalog Contains No Avatar Products');
+  const defaultProds = await adapter.getProducts();
+  const avatarProds = defaultProds.filter(
+    (p) => p.representation && p.representation.assetId.startsWith('avatar.')
+  );
+  assert.strictEqual(avatarProds.length, 0, 'Local catalog adapter must contain zero avatar product fixtures');
+  console.log('✔ PASS: Verified local catalog adapter contains zero avatar products.');
+
+  // Test 22: Every represented product references a garment asset with canonical slot
+  console.log('\nTest 22: Every Represented Product References a Garment Asset');
+  for (const prod of defaultProds) {
+    if (prod.representation) {
+      const asset = getAsset(prod.representation.assetId);
+      assert.ok(asset, `Asset ${prod.representation.assetId} must exist in registry`);
+      assert.strictEqual(asset.assetType, 'garment', `Asset ${prod.representation.assetId} must be of type "garment"`);
+      assert.strictEqual(prod.representation.garmentSlot, asset.slot);
+    }
+  }
+  console.log('✔ PASS: Every represented product in default adapter references a valid Garment3DAsset with matching slot.');
+
+  // Test 23: Negative price normalization does not clamp to zero
+  console.log('\nTest 23: Negative Price Normalization Preserves Value');
+  const negPriceRaw = { externalProductId: 'neg_1', title: 'Test', price: -50, currency: 'USD', availability: 'available' };
+  const normNegPrice = normalizeCatalogProduct(negPriceRaw);
+  assert.strictEqual(normNegPrice.price, -50, 'Negative price must be preserved as -50');
+  const valNegPrice = validateCatalogProduct(normNegPrice);
+  assert.strictEqual(valNegPrice.valid, false, 'Negative price must fail validation');
+  console.log('✔ PASS: Negative price normalization preserved -50 and failed validation as expected.');
+
+  // Test 24: Unknown availability does not default to 'available'
+  console.log('\nTest 24: Unknown Availability Preserved & Failed Validation');
+  const unknownAvailRaw = { externalProductId: 'unk_1', title: 'Test', price: 10, currency: 'USD', availability: 'super_available' };
+  const normUnknownAvail = normalizeCatalogProduct(unknownAvailRaw);
+  assert.strictEqual(normUnknownAvail.availability, 'super_available');
+  const valUnknownAvail = validateCatalogProduct(normUnknownAvail);
+  assert.strictEqual(valUnknownAvail.valid, false);
+  console.log('✔ PASS: Unknown availability was preserved during normalization and rejected by validator.');
+
+  // Test 25: Missing price cannot silently become zero
+  console.log('\nTest 25: Missing Price Preserves Undefined/Invalid State');
+  const missingPriceRaw = { externalProductId: 'no_price', title: 'Test', currency: 'USD', availability: 'available' };
+  const normMissingPrice = normalizeCatalogProduct(missingPriceRaw);
+  assert.strictEqual(normMissingPrice.price, undefined);
+  const valMissingPrice = validateCatalogProduct(normMissingPrice);
+  assert.strictEqual(valMissingPrice.valid, false);
+  console.log('✔ PASS: Missing price remains undefined and fails validation.');
+
+  // Test 26: Missing currency cannot silently become USD
+  console.log('\nTest 26: Missing Currency Preserves Empty String');
+  const missingCurrRaw = { externalProductId: 'no_curr', title: 'Test', price: 10, availability: 'available' };
+  const normMissingCurr = normalizeCatalogProduct(missingCurrRaw);
+  assert.strictEqual(normMissingCurr.currency, '');
+  const valMissingCurr = validateCatalogProduct(normMissingCurr);
+  assert.strictEqual(valMissingCurr.valid, false);
+  console.log('✔ PASS: Missing currency remains empty string and fails validation.');
+
+  // Test 27: Product -> Asset Registry -> Garment -> Outfit handoff
+  console.log('\nTest 27: Complete Product -> Garment -> Outfit Handoff');
+  const tshirtProd = await adapter.getProduct('prod_basic_tshirt_001');
+  assert.ok(tshirtProd && tshirtProd.representation);
+  const tshirtAsset = getAsset(tshirtProd.representation.assetId);
+  assert.ok(tshirtAsset && tshirtAsset.assetType === 'garment');
+
+  const outfitMgr = new OutfitManager('male', createEmptyOutfitState());
+  const equipResult = outfitMgr.equip(tshirtAsset.slot, tshirtAsset.assetId);
+  assert.strictEqual(equipResult.valid, true);
+  assert.strictEqual(outfitMgr.get('top'), 'garment.top.basic-tshirt');
+  console.log('✔ PASS: Complete Product -> Garment -> Outfit handoff executed successfully.');
+
+  // Test 28: Non-garment asset mapped as representation fails validation
+  console.log('\nTest 28: Non-Garment Asset in Product Representation Fails Validation');
+  const avatarMappedProd = {
+    ...validBaseProduct,
+    representation: {
+      assetId: 'avatar.male.base',
+      garmentSlot: 'top',
+      supportedAvatarIds: ['male'],
+    },
+  };
+  const valAvatarMapped = validateCatalogProduct(avatarMappedProd);
+  assert.strictEqual(valAvatarMapped.valid, false);
+  assert.ok(valAvatarMapped.errors.some((e) => e.includes('Only "garment" assets can be mapped as product 3D representations')));
+  console.log('✔ PASS: Product mapping an avatar asset failed validation with explicit message.');
+
   console.log('\n====================================================');
-  console.log('\x1b[32mSUCCESS: All 20 Phase 10 Integration Contract Tests Passed!\x1b[0m');
+  console.log('\x1b[32mSUCCESS: All 28 Phase 10 Integration Contract Tests Passed!\x1b[0m');
   console.log('====================================================');
 }
 

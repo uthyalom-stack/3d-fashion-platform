@@ -36,7 +36,7 @@ Storage & Delivery Abstraction (AssetLocation -> resolveAssetUrl)
 
 ---
 
-## 3. Platform Catalog Contract
+## 3. Platform Catalog Contract & Validation Types
 
 The canonical catalog contract is defined in `src/lib/integrations/types.ts`:
 
@@ -59,6 +59,11 @@ export interface PlatformCatalogProduct {
   representation?: Product3DRepresentation | null;
   metadata?: Record<string, unknown>;
 }
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
 ```
 
 ---
@@ -72,10 +77,11 @@ The external product identity (`externalProductId`) represents the authoritative
 
 ---
 
-## 5. 3D Asset Mapping
+## 5. 3D Asset Mapping Semantics
 
 The 3D representation mapping links an external commerce product to platform 3D asset metadata via `representation.assetId`.
 
+* **Garments Only:** Product 3D representations map strictly to garment 3D assets (`Garment3DAsset`). Avatars are base models and cannot be catalog product representations.
 * **No Competing URLs:** Catalog products do **not** define `modelUrl`, `gltfUrl`, or `assetUrl` fields.
 * **Single Authority:** `AssetRegistry` and `AssetLocation` remain solely authoritative for binary asset delivery and storage provider resolution.
 
@@ -105,7 +111,7 @@ export interface CatalogAdapter {
 
 `LocalCatalogAdapter` (`src/lib/integrations/localCatalogAdapter.ts`) provides a deterministic, in-memory reference implementation for local development, tests, and Studio demonstrations.
 
-It seeds realistic product records referencing canonical assets (`garment.top.basic-tshirt`, `avatar.male.base`, `avatar.female.base`) from `src/lib/3d/assets.json`.
+It seeds realistic product records referencing canonical garment assets (`garment.top.basic-tshirt`) from `src/lib/3d/assets.json` and a non-3D fixture for testing `has3D: false`.
 
 ---
 
@@ -120,7 +126,7 @@ Validation is enforced by `validateCatalogProduct` (`src/lib/integrations/catalo
 * Rejects competing URL properties (`modelUrl`, `assetUrl`, `gltfUrl`).
 * Rejects invalid or non-canonical `garmentSlot`.
 * Rejects unknown `supportedAvatarIds`.
-* Rejects references to non-existent assets in `AssetRegistry`.
+* Rejects references to non-existent assets or non-garment assets in `AssetRegistry`.
 
 ---
 
@@ -128,10 +134,9 @@ Validation is enforced by `validateCatalogProduct` (`src/lib/integrations/catalo
 
 Raw incoming data from external providers is sanitized through `normalizeCatalogProduct` (`src/lib/integrations/catalogNormalizer.ts`):
 
-* Strips vendor-specific extra fields or secrets.
-* Sanitizes string whitespace and numeric types.
+* Trims whitespace, normalizes casing, converts numeric strings.
 * Maps vendor status values (`in_stock`, `sold_out`, `pre_order`) to canonical `ProductAvailability`.
-* Returns clean `PlatformCatalogProduct` shapes.
+* **No Data Fabrication:** Does not clamp negative prices to zero, invent default currencies, or default invalid statuses to 'available'. Invalid data is preserved so validation cleanly rejects it.
 
 ---
 

@@ -7,6 +7,7 @@ import { validateCatalogProduct } from './catalogValidator';
 
 /**
  * Static fixture dataset referencing real platform 3D asset IDs.
+ * Strictly garment assets only for 3D representations.
  */
 const DEFAULT_LOCAL_PRODUCTS: PlatformCatalogProduct[] = [
   {
@@ -23,33 +24,7 @@ const DEFAULT_LOCAL_PRODUCTS: PlatformCatalogProduct[] = [
     },
   },
   {
-    externalProductId: 'prod_male_base_avatar_002',
-    title: 'Male Base Human Model',
-    brand: 'Platform Anatomy',
-    price: 0.0,
-    currency: 'USD',
-    availability: 'available',
-    representation: {
-      assetId: 'avatar.male.base',
-      garmentSlot: 'top',
-      supportedAvatarIds: ['male'],
-    },
-  },
-  {
-    externalProductId: 'prod_female_base_avatar_003',
-    title: 'Female Base Human Model',
-    brand: 'Platform Anatomy',
-    price: 0.0,
-    currency: 'USD',
-    availability: 'available',
-    representation: {
-      assetId: 'avatar.female.base',
-      garmentSlot: 'top',
-      supportedAvatarIds: ['female'],
-    },
-  },
-  {
-    externalProductId: 'prod_non_3d_accessory_004',
+    externalProductId: 'prod_non_3d_accessory_002',
     title: 'Digital Tote Bag (2D Print)',
     brand: 'Studio Merchandise',
     price: 15.00,

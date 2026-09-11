@@ -154,26 +154,22 @@ export default function StudioPage() {
     const resolvedAsset = getAsset(targetAssetId);
 
     if (!resolvedAsset) {
-      setStatusMessage(`Error: Asset ID "${targetAssetId}" not found in Asset Registry.`);
+      setStatusMessage(`Integration Contract Error: Asset ID "${targetAssetId}" not found in Asset Registry.`);
       return;
     }
 
-    if (resolvedAsset.assetType === 'garment') {
-      const gAsset = resolvedAsset as Garment3DAsset;
-      const result = outfitManager.equip(gAsset.slot, gAsset.assetId);
-      if (result.valid) {
-        setOutfitState(outfitManager.getOutfitState());
-        setStatusMessage(`Catalog item resolved -> Equipped 3D Asset "${gAsset.displayName}" (${gAsset.assetId})`);
-      } else {
-        setStatusMessage(`Catalog item resolve failed: ${result.error}`);
-      }
-    } else if (resolvedAsset.assetType === 'avatar') {
-      handleAvatarChange(resolvedAsset.assetId.includes('female') ? 'female' : 'male');
-      setStatusMessage(`Catalog item resolved -> Switched avatar to "${resolvedAsset.displayName}"`);
+    if (resolvedAsset.assetType !== 'garment') {
+      setStatusMessage(`Integration Contract Error: Asset ID "${targetAssetId}" is type "${resolvedAsset.assetType}". Only garment assets can be equipped from catalog products.`);
+      return;
+    }
+
+    const gAsset = resolvedAsset as Garment3DAsset;
+    const result = outfitManager.equip(gAsset.slot, gAsset.assetId);
+    if (result.valid) {
+      setOutfitState(outfitManager.getOutfitState());
+      setStatusMessage(`Catalog item resolved -> Equipped 3D Garment "${gAsset.displayName}" (${gAsset.assetId})`);
     } else {
-      const deliveryUrl = resolveAssetUrl(resolvedAsset);
-      setActiveModelUrl(deliveryUrl);
-      setStatusMessage(`Catalog item resolved -> Loaded model URL: ${deliveryUrl}`);
+      setStatusMessage(`Catalog item equip failed: ${result.error}`);
     }
   };
 

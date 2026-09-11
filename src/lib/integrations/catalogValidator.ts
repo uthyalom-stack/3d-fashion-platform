@@ -1,6 +1,6 @@
 import { CANONICAL_GARMENT_SLOTS, GarmentSlot } from '../../types/garment';
-import { hasAsset } from '../3d/assetRegistry';
-import { CatalogValidationResult, ProductAvailability } from './types';
+import { getAsset, hasAsset } from '../3d/assetRegistry';
+import { ValidationResult, ProductAvailability } from './types';
 
 const VALID_AVAILABILITY_STATES: Set<ProductAvailability> = new Set([
   'available',
@@ -21,12 +21,12 @@ const KNOWN_AVATARS: Set<string> = new Set(['male', 'female']);
  * - Non-empty currency code
  * - Valid availability status
  * - Absence of illegal competing URL properties (e.g. modelUrl, assetUrl)
- * - Valid 3D representation (if provided): non-empty assetId, canonical garment slot, valid avatar IDs, asset existence in AssetRegistry
+ * - Valid 3D representation (if provided): non-empty assetId, canonical garment slot, valid avatar IDs, asset existence in AssetRegistry, asset must be a Garment3DAsset
  */
 export function validateCatalogProduct(
   product: unknown,
   options?: { checkRegistryAssetExistence?: boolean }
-): CatalogValidationResult {
+): ValidationResult {
   const errors: string[] = [];
 
   if (!product || typeof product !== 'object') {
@@ -88,6 +88,11 @@ export function validateCatalogProduct(
         const assetId = rep.assetId.trim();
         if (!hasAsset(assetId)) {
           errors.push(`representation.assetId "${assetId}" referenced by product does not exist in AssetRegistry.`);
+        } else {
+          const registeredAsset = getAsset(assetId);
+          if (registeredAsset && registeredAsset.assetType !== 'garment') {
+            errors.push(`representation.assetId "${assetId}" references an asset of type "${registeredAsset.assetType}". Only "garment" assets can be mapped as product 3D representations.`);
+          }
         }
       }
 

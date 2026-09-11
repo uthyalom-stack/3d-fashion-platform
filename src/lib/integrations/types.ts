@@ -42,8 +42,9 @@ export interface CatalogProductQuery {
 
 /**
  * Validation result contract for catalog product records.
+ * Single canonical public validation result type across integration layer.
  */
-export interface CatalogValidationResult {
+export interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
