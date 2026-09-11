@@ -159,6 +159,16 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
     const newAliasesSet = new Set<string>(validatedAliasesList);
 
     const primaryId = asset.assetId;
+
+    // Check for atomic primary ID / alias collisions before modifying any repository state
+    for (const alias of newAliasesSet) {
+      if (alias !== primaryId && this.store.has(alias)) {
+        throw new Error(
+          `Alias collision error for asset "${primaryId}": Alias "${alias}" matches an existing primary asset ID. Aliases cannot collide with primary asset IDs.`
+        );
+      }
+    }
+
     const clonedAsset = deepClone(asset);
 
     // 1. If updating an existing primary asset, clean up old aliases it previously owned that are omitted in update
