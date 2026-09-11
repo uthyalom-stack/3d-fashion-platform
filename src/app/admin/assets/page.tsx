@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { PersistedAssetRecord } from '@/lib/3d/persistence/types';
 import { listAssetRecordsAction, deleteAssetAction } from '@/app/admin/actions';
@@ -16,45 +16,49 @@ export default function AdminAssetsPage() {
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   const [assetToDelete, setAssetToDelete] = useState<string | null>(null);
 
-  const loadAssets = async () => {
-    setLoading(true);
-    setError(null);
+  /**
+   * Authoritative asset list loader with stale-request / unmount protection.
+   */
+  const loadAssets = useCallback(async (isMounted?: () => boolean) => {
     try {
       const data = await listAssetRecordsAction();
+      if (isMounted && !isMounted()) return;
+
       setRecords(data);
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load asset records.');
+      if (!isMounted || isMounted()) {
+        setError(err instanceof Error ? err.message : 'Failed to load asset records.');
+      }
     } finally {
-      setLoading(false);
+      if (!isMounted || isMounted()) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
-    let ignore = false;
-    const fetchAssets = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await listAssetRecordsAction();
-        if (!ignore) {
-          setRecords(data);
-        }
-      } catch (err) {
-        if (!ignore) {
+    let mounted = true;
+
+    Promise.resolve().then(() => {
+      if (!mounted) return;
+      loadAssets(() => mounted).catch((err) => {
+        if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to load asset records.');
-        }
-      } finally {
-        if (!ignore) {
           setLoading(false);
         }
-      }
-    };
+      });
+    });
 
-    fetchAssets();
     return () => {
-      ignore = true;
+      mounted = false;
     };
-  }, []);
+  }, [loadAssets]);
+
+  const handleRefresh = () => {
+    setLoading(true);
+    void loadAssets();
+  };
 
   const handleDeleteConfirm = async () => {
     if (!assetToDelete) return;
@@ -97,7 +101,7 @@ export default function AdminAssetsPage() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className={styles.button} onClick={loadAssets} disabled={loading}>
+              <button className={styles.button} onClick={handleRefresh} disabled={loading}>
                 {loading ? 'Refreshing...' : '↻ Refresh'}
               </button>
               <Link href="/admin/assets/new" className={styles.primaryButton}>
