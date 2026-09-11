@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Platform3DAsset, AssetType, AssetSourceType } from '@/types/asset';
 import { GarmentSlot, CANONICAL_GARMENT_SLOTS } from '@/types/garment';
-import { createAsset } from '@/lib/admin/assetAdminService';
+import { createAssetAction } from '@/app/admin/actions';
 import { AdminHeader, AdminNotice } from '@/app/admin/AdminComponents';
 import styles from '@/app/admin/admin.module.css';
 
@@ -105,7 +105,7 @@ export default function NewAssetPage() {
         };
       }
 
-      await createAsset(newAsset, aliasIds);
+      await createAssetAction(newAsset, aliasIds);
       router.push('/admin/assets');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred creating asset record.');

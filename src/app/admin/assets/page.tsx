@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PersistedAssetRecord } from '@/lib/3d/persistence/types';
-import { listAssetRecords, deleteAsset } from '@/lib/admin/assetAdminService';
+import { listAssetRecordsAction, deleteAssetAction } from '@/app/admin/actions';
 import { resolveAssetUrl } from '@/lib/3d/assetDelivery';
 import { AdminHeader, AdminNotice } from '../AdminComponents';
 import styles from '../admin.module.css';
@@ -20,7 +20,7 @@ export default function AdminAssetsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await listAssetRecords();
+      const data = await listAssetRecordsAction();
       setRecords(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load asset records.');
@@ -35,7 +35,7 @@ export default function AdminAssetsPage() {
       setLoading(true);
       setError(null);
       try {
-        const data = await listAssetRecords();
+        const data = await listAssetRecordsAction();
         if (!ignore) {
           setRecords(data);
         }
@@ -63,7 +63,7 @@ export default function AdminAssetsPage() {
     setSuccess(null);
 
     try {
-      const deleted = await deleteAsset(assetToDelete);
+      const deleted = await deleteAssetAction(assetToDelete);
       if (deleted) {
         setSuccess(`Asset "${assetToDelete}" deleted successfully.`);
         await loadAssets();

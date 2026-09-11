@@ -1,5 +1,6 @@
 import { Platform3DAsset, AssetType } from '../../types/asset';
 import { PersistedAssetRecord } from '../3d/persistence/types';
+import { validateAsset } from '../3d/assetValidator';
 import {
   getAssetRepository,
   ensureRegistryInitialized,
@@ -85,6 +86,12 @@ export async function createAsset(asset: Platform3DAsset, aliasIds: string[] = [
     throw new Error('Cannot create asset without a valid assetId.');
   }
 
+  // Explicit domain validation before calling repo.saveAsset
+  const validation = validateAsset(asset);
+  if (!validation.valid) {
+    throw new Error(`Validation failed for asset "${asset.assetId}": ${validation.errors.join('; ')}`);
+  }
+
   // Verify asset doesn't already exist as a primary asset ID
   const existingRecord = await repo.getRecord(asset.assetId);
   if (existingRecord && existingRecord.asset.assetId === asset.assetId) {
@@ -110,6 +117,12 @@ export async function updateAsset(
   const existing = await repo.getAsset(assetId);
   if (!existing) {
     throw new Error(`Cannot update asset "${assetId}". Asset not found.`);
+  }
+
+  // Explicit domain validation before calling repo.saveAsset
+  const validation = validateAsset(asset);
+  if (!validation.valid) {
+    throw new Error(`Validation failed for asset "${asset.assetId}": ${validation.errors.join('; ')}`);
   }
 
   await repo.saveAsset(asset, aliasIds);

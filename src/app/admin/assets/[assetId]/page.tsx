@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useState, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Platform3DAsset, Garment3DAsset, Avatar3DAsset, AssetType, AssetSourceType } from '@/types/asset';
 import { GarmentSlot, CANONICAL_GARMENT_SLOTS } from '@/types/garment';
-import { getAssetRecord, updateAsset, deleteAsset } from '@/lib/admin/assetAdminService';
+import { getAssetRecordAction, updateAssetAction, deleteAssetAction } from '@/app/admin/actions';
 import { resolveAssetUrl } from '@/lib/3d/assetDelivery';
 import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
 import { ModelLoader } from '@/components/3d/ModelLoader';
-import { AdminHeader, AdminNotice } from '../../AdminComponents';
-import styles from '../../admin.module.css';
+import { AdminHeader, AdminNotice } from '@/app/admin/AdminComponents';
+import styles from '@/app/admin/admin.module.css';
 
 export default function EditAssetPage({ params }: { params: Promise<{ assetId: string }> }) {
   const resolvedParams = use(params);
@@ -53,11 +53,11 @@ export default function EditAssetPage({ params }: { params: Promise<{ assetId: s
   // 3D Runtime Preview
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const loadAssetData = async () => {
+  const loadAssetData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const record = await getAssetRecord(rawAssetId);
+      const record = await getAssetRecordAction(rawAssetId);
       if (!record) {
         setError(`Asset record "${rawAssetId}" not found.`);
         setLoading(false);
@@ -99,15 +99,15 @@ export default function EditAssetPage({ params }: { params: Promise<{ assetId: s
     } finally {
       setLoading(false);
     }
-  };
+  }, [rawAssetId]);
 
   useEffect(() => {
     let ignore = false;
-    const fetchData = async () => {
+    const executeLoad = async () => {
       setLoading(true);
       setError(null);
       try {
-        const record = await getAssetRecord(rawAssetId);
+        const record = await getAssetRecordAction(rawAssetId);
         if (ignore) return;
         if (!record) {
           setError(`Asset record "${rawAssetId}" not found.`);
@@ -156,7 +156,7 @@ export default function EditAssetPage({ params }: { params: Promise<{ assetId: s
       }
     };
 
-    fetchData();
+    executeLoad();
     return () => {
       ignore = true;
     };
@@ -227,7 +227,7 @@ export default function EditAssetPage({ params }: { params: Promise<{ assetId: s
         };
       }
 
-      await updateAsset(rawAssetId, updatedAsset, aliasIds);
+      await updateAssetAction(rawAssetId, updatedAsset, aliasIds);
       setSuccess(`Asset "${trimmedAssetId}" updated successfully.`);
       await loadAssetData();
     } catch (err) {
@@ -239,7 +239,7 @@ export default function EditAssetPage({ params }: { params: Promise<{ assetId: s
 
   const handleDeleteConfirm = async () => {
     try {
-      const deleted = await deleteAsset(rawAssetId);
+      const deleted = await deleteAssetAction(rawAssetId);
       if (deleted) {
         router.push('/admin/assets');
       } else {
@@ -382,7 +382,7 @@ export default function EditAssetPage({ params }: { params: Promise<{ assetId: s
                       <select
                         className={styles.select}
                         value={gender}
-                    onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'unisex')}
+                        onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'unisex')}
                       >
                         <option value="male">Male</option>
                         <option value="female">Female</option>

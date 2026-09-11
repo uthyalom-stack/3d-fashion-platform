@@ -3,9 +3,17 @@ const path = require('path');
 const assert = require('assert');
 const ts = require('typescript');
 
-// Enable direct loading of TypeScript modules in Node.js
+// Enable direct loading of TypeScript modules in Node.js with '@/' path alias support
 function loadTsModule(module, filename) {
-  const content = fs.readFileSync(filename, 'utf8');
+  let content = fs.readFileSync(filename, 'utf8');
+  // Replace '@/...' path alias with relative paths from src/
+  content = content.replace(/(from\s+['"])@\/(.*?)(['"])/g, (match, p1, p2, p3) => {
+    const absPath = path.join(__dirname, '../src', p2);
+    let relPath = path.relative(path.dirname(filename), absPath);
+    if (!relPath.startsWith('.')) relPath = './' + relPath;
+    return `${p1}${relPath}${p3}`;
+  });
+
   const result = ts.transpileModule(content, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -35,6 +43,8 @@ const {
   updateAsset,
   deleteAsset,
 } = require('../src/lib/admin/assetAdminService');
+
+const serverActions = require('../src/app/admin/actions');
 
 const {
   LocalAssetPersistenceAdapter,
@@ -200,8 +210,70 @@ async function runAssetAdminTests() {
   await deleteAsset('garment.top.admin-item-b');
   console.log('✔ PASS: Alias creation and atomic reassignment verified.');
 
-  // 10. Supported Avatar Validation Test
-  console.log('\nTest 10: Supported Avatar Validation');
+  // 10. Primary ID / Alias Collision Hardening Test
+  console.log('\nTest 10: Primary ID / Alias Collision Hardening & Atomicity');
+  await createAsset(assetA, ['alias_a_1']);
+  await createAsset(assetB, ['alias_b_1']);
+
+  // Attempt to give B an alias that matches A's primary asset ID ("garment.top.admin-item-a")
+  await assert.rejects(
+    async () => updateAsset('garment.top.admin-item-b', assetB, ['garment.top.admin-item-a']),
+    /Alias collision error/
+  );
+
+  // Assert atomic failure (state of A and B remain unchanged, no map corruption)
+  const recAAfterCollision = await getAssetRecord('garment.top.admin-item-a');
+  const recBAfterCollision = await getAssetRecord('garment.top.admin-item-b');
+  assert.deepStrictEqual(recAAfterCollision.aliasIds, ['alias_a_1']);
+  assert.deepStrictEqual(recBAfterCollision.aliasIds, ['alias_b_1']);
+  assert.strictEqual((await getAsset('garment.top.admin-item-a')).displayName, 'Admin Item A');
+  assert.strictEqual((await getAsset('garment.top.admin-item-b')).displayName, 'Admin Item B');
+  console.log('✔ PASS: Primary-ID collision rejected atomically without corrupting existing records or alias sets.');
+
+  // 11. Update & Delete Through Alias Test
+  console.log('\nTest 11: Update & Delete Through Alias');
+  // Update through alias
+  const updatedA = { ...assetA, displayName: 'Admin Item A Modified' };
+  await updateAsset('alias_a_1', updatedA, ['alias_a_2']);
+  assert.strictEqual((await getAsset('garment.top.admin-item-a')).displayName, 'Admin Item A Modified');
+  assert.strictEqual(await hasAsset('alias_a_1'), false);
+  assert.strictEqual(await hasAsset('alias_a_2'), true);
+
+  // Delete through alias
+  const deletedThroughAlias = await deleteAsset('alias_a_2');
+  assert.strictEqual(deletedThroughAlias, true);
+  assert.strictEqual(await hasAsset('garment.top.admin-item-a'), false);
+  assert.strictEqual(await hasAsset('alias_a_2'), false);
+
+  // Clean up B
+  await deleteAsset('garment.top.admin-item-b');
+  console.log('✔ PASS: Operations performed through alias resolved primary asset and maintained repository consistency.');
+
+  // 12. Reverse Alias Map Consistency Test
+  console.log('\nTest 12: Reverse Alias Set Consistency Check');
+  const records = await listAssetRecords();
+  records.forEach((r) => {
+    assert.ok(Array.isArray(r.aliasIds));
+    r.aliasIds.forEach((alias) => {
+      assert.notStrictEqual(alias, r.asset.assetId, 'Alias cannot match primary asset ID');
+    });
+  });
+  console.log('✔ PASS: All persisted records maintain strictly consistent reverse alias mappings.');
+
+  // 13. Next.js Server Actions Boundary Verification Test
+  console.log('\nTest 13: Next.js Server Actions Boundary Verification');
+  assert.strictEqual(typeof serverActions.listAssetsAction, 'function');
+  assert.strictEqual(typeof serverActions.createAssetAction, 'function');
+  assert.strictEqual(typeof serverActions.updateAssetAction, 'function');
+  assert.strictEqual(typeof serverActions.deleteAssetAction, 'function');
+
+  const actionAssets = await serverActions.listAssetsAction();
+  assert.ok(Array.isArray(actionAssets));
+  assert.ok(actionAssets.length >= 3);
+  console.log('✔ PASS: Server Actions boundary delegates to admin service and returns repository records.');
+
+  // 14. Supported Avatar Validation Test
+  console.log('\nTest 14: Supported Avatar Validation');
   const badAvatarGarment = {
     assetId: 'garment.top.bad-avatar',
     assetType: 'garment',
@@ -218,8 +290,8 @@ async function runAssetAdminTests() {
   );
   console.log('✔ PASS: Reference to unknown avatar ID rejected.');
 
-  // 11. Garment Slot Validation Test
-  console.log('\nTest 11: Garment Slot Validation');
+  // 15. Garment Slot Validation Test
+  console.log('\nTest 15: Garment Slot Validation');
   const badSlotGarment = {
     ...badAvatarGarment,
     slot: 'shoes_hat',
@@ -231,8 +303,8 @@ async function runAssetAdminTests() {
   );
   console.log('✔ PASS: Non-canonical garment slot rejected.');
 
-  // 12. Repository-Backed Persistence & Deep-Clone Protection Test
-  console.log('\nTest 12: Repository-Backed Persistence & Deep-Clone Protection');
+  // 16. Repository-Backed Persistence & Deep-Clone Protection Test
+  console.log('\nTest 16: Repository-Backed Persistence & Deep-Clone Protection');
   const originalAsset = await getAsset('avatar.male.base');
   originalAsset.displayName = 'MUTATED DISPLAY NAME';
 
@@ -241,13 +313,13 @@ async function runAssetAdminTests() {
   assert.strictEqual(freshFetch.displayName, 'Adult Male Base Avatar');
   console.log('✔ PASS: Deep-clone protection verified on Admin Service read boundary.');
 
-  // 13. Admin Service Persistence Boundary Check
-  console.log('\nTest 13: Admin Service Does Not Bypass Repository');
+  // 17. Admin Service Persistence Boundary Check
+  console.log('\nTest 17: Admin Service Does Not Bypass Repository');
   assert.strictEqual(getAssetRepository(), repo, 'Admin service uses active backing AssetRepository');
   console.log('✔ PASS: Admin service strictly uses AssetRepository persistence boundary.');
 
-  // 14. Existing Seed Behavior Remains Intact
-  console.log('\nTest 14: Existing Phase 8 Seed Behavior Intact');
+  // 18. Existing Seed Behavior Remains Intact
+  console.log('\nTest 18: Existing Phase 8 Seed Behavior Intact');
   const freshRepo = new LocalAssetPersistenceAdapter();
   const seededCount = await seedAssetRepository(freshRepo);
   assert.ok(seededCount >= 3);
