@@ -53,114 +53,68 @@ export default function EditAssetPage({ params }: { params: Promise<{ assetId: s
   // 3D Runtime Preview
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  /**
+   * Single authoritative asset data loader.
+   */
   const loadAssetData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const record = await getAssetRecordAction(rawAssetId);
-      if (!record) {
-        setError(`Asset record "${rawAssetId}" not found.`);
-        setLoading(false);
-        return;
-      }
-
-      const { asset, aliasIds } = record;
-      setAssetId(asset.assetId);
-      setAssetType(asset.assetType);
-      setDisplayName(asset.displayName);
-      setSchemaVersion(asset.schemaVersion);
-      setVersion(asset.version);
-
-      if (asset.assetType === 'garment') {
-        const g = asset as Garment3DAsset;
-        setSlot(g.slot);
-        setSupportedAvatarIdsText((g.supportedAvatarIds || []).join(', '));
-      } else if (asset.assetType === 'avatar') {
-        const a = asset as Avatar3DAsset;
-        setAvatarId(a.avatarId);
-        setGender(a.gender);
-      }
-
-      setSource(asset.location.source);
-      setPath(asset.location.path || '');
-      setProvider(asset.location.provider || '');
-      setObjectKey(asset.location.objectKey || '');
-
-      setAliasesText((aliasIds || []).join(', '));
-
-      try {
-        const url = resolveAssetUrl(asset);
-        setPreviewUrl(url);
-      } catch {
-        setPreviewUrl(null);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error loading asset record.');
-    } finally {
+    const record = await getAssetRecordAction(rawAssetId);
+    if (!record) {
+      setError(`Asset record "${rawAssetId}" not found.`);
       setLoading(false);
+      return;
     }
+
+    setError(null);
+    const { asset, aliasIds } = record;
+    setAssetId(asset.assetId);
+    setAssetType(asset.assetType);
+    setDisplayName(asset.displayName);
+    setSchemaVersion(asset.schemaVersion);
+    setVersion(asset.version);
+
+    if (asset.assetType === 'garment') {
+      const g = asset as Garment3DAsset;
+      setSlot(g.slot);
+      setSupportedAvatarIdsText((g.supportedAvatarIds || []).join(', '));
+    } else if (asset.assetType === 'avatar') {
+      const a = asset as Avatar3DAsset;
+      setAvatarId(a.avatarId);
+      setGender(a.gender);
+    }
+
+    setSource(asset.location.source);
+    setPath(asset.location.path || '');
+    setProvider(asset.location.provider || '');
+    setObjectKey(asset.location.objectKey || '');
+
+    setAliasesText((aliasIds || []).join(', '));
+
+    try {
+      const url = resolveAssetUrl(asset);
+      setPreviewUrl(url);
+    } catch {
+      setPreviewUrl(null);
+    }
+    setLoading(false);
   }, [rawAssetId]);
 
   useEffect(() => {
-    let ignore = false;
-    const executeLoad = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const record = await getAssetRecordAction(rawAssetId);
-        if (ignore) return;
-        if (!record) {
-          setError(`Asset record "${rawAssetId}" not found.`);
-          setLoading(false);
-          return;
-        }
+    let mounted = true;
 
-        const { asset, aliasIds } = record;
-        setAssetId(asset.assetId);
-        setAssetType(asset.assetType);
-        setDisplayName(asset.displayName);
-        setSchemaVersion(asset.schemaVersion);
-        setVersion(asset.version);
-
-        if (asset.assetType === 'garment') {
-          const g = asset as Garment3DAsset;
-          setSlot(g.slot);
-          setSupportedAvatarIdsText((g.supportedAvatarIds || []).join(', '));
-        } else if (asset.assetType === 'avatar') {
-          const a = asset as Avatar3DAsset;
-          setAvatarId(a.avatarId);
-          setGender(a.gender);
-        }
-
-        setSource(asset.location.source);
-        setPath(asset.location.path || '');
-        setProvider(asset.location.provider || '');
-        setObjectKey(asset.location.objectKey || '');
-
-        setAliasesText((aliasIds || []).join(', '));
-
-        try {
-          const url = resolveAssetUrl(asset);
-          setPreviewUrl(url);
-        } catch {
-          setPreviewUrl(null);
-        }
-      } catch (err) {
-        if (!ignore) {
+    Promise.resolve().then(() => {
+      if (!mounted) return;
+      loadAssetData().catch((err) => {
+        if (mounted) {
           setError(err instanceof Error ? err.message : 'Error loading asset record.');
-        }
-      } finally {
-        if (!ignore) {
           setLoading(false);
         }
-      }
-    };
+      });
+    });
 
-    executeLoad();
     return () => {
-      ignore = true;
+      mounted = false;
     };
-  }, [rawAssetId]);
+  }, [loadAssetData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
