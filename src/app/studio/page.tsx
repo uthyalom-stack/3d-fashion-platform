@@ -227,9 +227,12 @@ export default function StudioPage() {
             <strong>Active Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
           </div>
 
-          {/* 3D Asset Registry Developer Inspection */}
+          {/* 3D Asset Registry & Persistence Developer Inspection */}
           <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e5e5ea', paddingTop: '0.5rem' }}>
-            <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>3D Asset Registry:</strong>
+            <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>3D Asset Registry & Persistence:</strong>
+            <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '2px', marginBottom: '4px' }}>
+              Repo Status: <strong>Initialized (LocalAdapter)</strong> | Assets: <strong>{allRegistryAssets.length}</strong>
+            </div>
             <div style={{ display: 'flex', gap: '4px', marginTop: '0.25rem' }}>
               <select
                 value={selectedAssetId}
