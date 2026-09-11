@@ -281,8 +281,113 @@ async function runAssetPersistenceTests() {
   assert.strictEqual(await emptyRepo.deleteAsset('non_existent_999'), false);
   console.log('✔ PASS: Missing asset operations return null/false without throwing.');
 
+  // ====================================================
+  // ALIAS OWNERSHIP REASSIGNMENT REGRESSION TESTS (A-F)
+  // ====================================================
+
+  console.log('\n----------------------------------------------------');
+  console.log('Alias Ownership Reassignment Regression Tests (A-F)');
+  console.log('----------------------------------------------------');
+
+  const assetA = {
+    assetId: 'garment.top.item-a',
+    assetType: 'garment',
+    schemaVersion: '1.0',
+    version: '1.0.0',
+    displayName: 'Item A',
+    location: { source: 'local', path: '/models/item-a.glb' },
+    slot: 'top',
+    supportedAvatarIds: ['male'],
+  };
+
+  const assetB = {
+    assetId: 'garment.top.item-b',
+    assetType: 'garment',
+    schemaVersion: '1.0',
+    version: '1.0.0',
+    displayName: 'Item B',
+    location: { source: 'local', path: '/models/item-b.glb' },
+    slot: 'top',
+    supportedAvatarIds: ['male'],
+  };
+
+  // Test A: Alias Reassignment
+  console.log('\nTest A: Alias Reassignment');
+  const reassignRepo = new LocalAssetPersistenceAdapter();
+  await reassignRepo.saveAsset(assetA, ['shared_alias']);
+  assert.strictEqual((await reassignRepo.getAsset('shared_alias')).assetId, 'garment.top.item-a');
+
+  // Save B taking over 'shared_alias'
+  await reassignRepo.saveAsset(assetB, ['shared_alias']);
+  assert.strictEqual((await reassignRepo.getAsset('shared_alias')).assetId, 'garment.top.item-b');
+
+  // Verify A no longer owns 'shared_alias'
+  const recordA = await reassignRepo.getRecord('garment.top.item-a');
+  assert.ok(recordA);
+  assert.strictEqual(recordA.aliasIds.includes('shared_alias'), false, 'A must no longer own shared_alias');
+  console.log('✔ PASS: Alias reassignment transferred alias to B and removed alias from A.');
+
+  // Test B: Delete Previous Owner
+  console.log('\nTest B: Delete Previous Owner');
+  await reassignRepo.deleteAsset('garment.top.item-a');
+  assert.strictEqual(await reassignRepo.hasAsset('garment.top.item-b'), true);
+  assert.strictEqual((await reassignRepo.getAsset('shared_alias')).assetId, 'garment.top.item-b');
+  console.log('✔ PASS: Deleting previous owner A did NOT remove B or corrupt B\'s re-assigned alias.');
+
+  // Test C: Update Previous Owner
+  console.log('\nTest C: Update Previous Owner');
+  const updateRepo = new LocalAssetPersistenceAdapter();
+  await updateRepo.saveAsset(assetA, ['a1', 'shared']);
+  await updateRepo.saveAsset(assetB, ['shared']);
+
+  // Update A with ['a2']
+  await updateRepo.saveAsset({ ...assetA, displayName: 'Item A Updated' }, ['a2']);
+
+  assert.strictEqual((await updateRepo.getAsset('shared')).assetId, 'garment.top.item-b');
+  assert.strictEqual(await updateRepo.hasAsset('a1'), false, 'a1 no longer resolves');
+  assert.strictEqual((await updateRepo.getAsset('a2')).assetId, 'garment.top.item-a');
+  console.log('✔ PASS: Updating previous owner A preserved B\'s ownership of "shared" and updated A\'s aliases cleanly.');
+
+  // Test D: Reverse Reassignment (Swap)
+  console.log('\nTest D: Reverse Reassignment (Swap)');
+  const swapRepo = new LocalAssetPersistenceAdapter();
+  await swapRepo.saveAsset(assetA, ['alias_x']);
+  await swapRepo.saveAsset(assetB, ['alias_y']);
+
+  // B takes alias_x
+  await swapRepo.saveAsset(assetB, ['alias_x']);
+  // A takes alias_y
+  await swapRepo.saveAsset(assetA, ['alias_y']);
+
+  assert.strictEqual((await swapRepo.getAsset('alias_x')).assetId, 'garment.top.item-b');
+  assert.strictEqual((await swapRepo.getAsset('alias_y')).assetId, 'garment.top.item-a');
+
+  const recA = await swapRepo.getRecord('garment.top.item-a');
+  const recB = await swapRepo.getRecord('garment.top.item-b');
+  assert.deepStrictEqual(recA.aliasIds, ['alias_y']);
+  assert.deepStrictEqual(recB.aliasIds, ['alias_x']);
+  console.log('✔ PASS: Reverse alias reassignment resolved both aliases to current owners without stale entries.');
+
+  // Test E: Repository Records
+  console.log('\nTest E: Repository Records Reflect Current Ownership Only');
+  const records = await swapRepo.getRecords();
+  const recAInRecords = records.find((r) => r.asset.assetId === 'garment.top.item-a');
+  const recBInRecords = records.find((r) => r.asset.assetId === 'garment.top.item-b');
+  assert.deepStrictEqual(recAInRecords.aliasIds, ['alias_y']);
+  assert.deepStrictEqual(recBInRecords.aliasIds, ['alias_x']);
+  console.log('✔ PASS: getRecord() and getRecords() expose strictly current alias ownership.');
+
+  // Test F: Registry Behavior
+  console.log('\nTest F: AssetRegistry Alias Lookup After Reassignment & setAssetRepository');
+  await setAssetRepository(swapRepo);
+  assert.strictEqual(resolveRegistryAssetId('alias_x'), 'garment.top.item-b');
+  assert.strictEqual(resolveRegistryAssetId('alias_y'), 'garment.top.item-a');
+  assert.strictEqual(getRegistryAsset('alias_x').assetId, 'garment.top.item-b');
+  assert.strictEqual(getRegistryAsset('alias_y').assetId, 'garment.top.item-a');
+  console.log('✔ PASS: AssetRegistry synchronous lookup reflects accurate alias ownership after repository swap.');
+
   console.log('\n====================================================');
-  console.log('\x1b[32mSUCCESS: All 25 Phase 8 Asset Metadata Persistence Tests Passed!\x1b[0m');
+  console.log('\x1b[32mSUCCESS: All Phase 8 Tests & Alias Regression Tests Passed!\x1b[0m');
   console.log('====================================================');
 }
 

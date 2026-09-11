@@ -36,6 +36,7 @@ function validateAliases(aliasIds: unknown, assetId: string): string[] {
  * Capabilities:
  * - Deterministic, ordered asset metadata store.
  * - Full alias support (`PersistedAssetRecord`) for portable repository replication.
+ * - Atomic alias ownership reassignment with bi-directional map consistency.
  * - Strict metadata and alias validation using platform `validateAsset` before saving.
  * - Deep cloning on read/write boundaries to protect internal repository state from external mutation.
  * - Pure TypeScript with zero database credentials or external SaaS dependencies.
@@ -154,17 +155,20 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
     }
 
     // Strict alias validation
-    const validatedAliases = validateAliases(rawAliases, asset.assetId);
+    const validatedAliasesList = validateAliases(rawAliases, asset.assetId);
+    const newAliasesSet = new Set<string>(validatedAliasesList);
 
     const primaryId = asset.assetId;
     const clonedAsset = deepClone(asset);
 
-    // If updating existing primary asset, clean up old alias maps first
-    if (this.store.has(primaryId)) {
-      const oldAliases = this.primaryToAliases.get(primaryId);
-      if (oldAliases) {
-        for (const oldAlias of oldAliases) {
-          this.aliasToPrimary.delete(oldAlias);
+    // 1. If updating an existing primary asset, clean up old aliases it previously owned that are omitted in update
+    const previousAliasesOfAsset = this.primaryToAliases.get(primaryId);
+    if (previousAliasesOfAsset) {
+      for (const oldAlias of previousAliasesOfAsset) {
+        if (!newAliasesSet.has(oldAlias)) {
+          if (this.aliasToPrimary.get(oldAlias) === primaryId) {
+            this.aliasToPrimary.delete(oldAlias);
+          }
         }
       }
     } else {
@@ -174,15 +178,29 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
     // Store asset
     this.store.set(primaryId, clonedAsset);
 
-    // Register new aliases
-    const aliasSet = new Set<string>();
-    for (const alias of validatedAliases) {
-      if (alias !== primaryId) {
-        this.aliasToPrimary.set(alias, primaryId);
-        aliasSet.add(alias);
+    // 2. Register new aliases and handle atomic ownership reassignment
+    const currentOwnerAliasSet = new Set<string>();
+
+    for (const alias of newAliasesSet) {
+      if (alias === primaryId) continue; // Primary ID lookup is handled directly via this.store
+
+      // If alias was previously owned by another asset, reassign ownership and clean up previous owner's set
+      if (this.aliasToPrimary.has(alias)) {
+        const previousOwnerId = this.aliasToPrimary.get(alias);
+        if (previousOwnerId && previousOwnerId !== primaryId) {
+          const previousOwnerAliasSet = this.primaryToAliases.get(previousOwnerId);
+          if (previousOwnerAliasSet) {
+            previousOwnerAliasSet.delete(alias);
+          }
+        }
       }
+
+      // Assign alias to current primary asset ID
+      this.aliasToPrimary.set(alias, primaryId);
+      currentOwnerAliasSet.add(alias);
     }
-    this.primaryToAliases.set(primaryId, aliasSet);
+
+    this.primaryToAliases.set(primaryId, currentOwnerAliasSet);
   }
 
   async saveRecord(record: PersistedAssetRecord): Promise<void> {
@@ -204,11 +222,13 @@ export class LocalAssetPersistenceAdapter implements AssetRepository {
     this.store.delete(primaryId);
     this.insertionOrder = this.insertionOrder.filter((id) => id !== primaryId);
 
-    // Delete associated alias maps
+    // Delete associated alias maps only for aliases genuinely pointing to this primary asset
     const associatedAliases = this.primaryToAliases.get(primaryId);
     if (associatedAliases) {
       for (const alias of associatedAliases) {
-        this.aliasToPrimary.delete(alias);
+        if (this.aliasToPrimary.get(alias) === primaryId) {
+          this.aliasToPrimary.delete(alias);
+        }
       }
     }
     this.primaryToAliases.delete(primaryId);
