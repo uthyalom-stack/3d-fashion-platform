@@ -14,10 +14,10 @@ export class IntegrationRuntimeManager {
   private activeAdapter: CatalogAdapter | null = null;
 
   /**
-   * Registers and activates an integration adapter.
+   * Registers and activates an integration adapter asynchronously.
    * Validates configuration and adapter contract atomically before committing active state.
    */
-  public registerAdapter(config: IntegrationConfig, adapter?: CatalogAdapter): void {
+  public async registerAdapter(config: IntegrationConfig, adapter?: CatalogAdapter): Promise<void> {
     // 1. Validate IntegrationConfig structure
     const configVal = validateIntegrationConfig(config);
     if (!configVal.valid) {
@@ -47,10 +47,10 @@ export class IntegrationRuntimeManager {
       }
       targetAdapter = adapter;
     } else {
-      targetAdapter = createCatalogAdapter(config);
+      targetAdapter = await createCatalogAdapter(config);
     }
 
-    // 4. Atomic commit: Mutate active state only after all validations pass
+    // 4. Atomic commit: Mutate active state only after all async validations and initializations pass
     this.activeConfig = JSON.parse(JSON.stringify(config));
     this.activeAdapter = targetAdapter;
   }
@@ -147,8 +147,8 @@ const globalRuntimeManager = new IntegrationRuntimeManager();
 /**
  * Global integration runtime convenience functions.
  */
-export function registerAdapter(config: IntegrationConfig, adapter?: CatalogAdapter): void {
-  globalRuntimeManager.registerAdapter(config, adapter);
+export function registerAdapter(config: IntegrationConfig, adapter?: CatalogAdapter): Promise<void> {
+  return globalRuntimeManager.registerAdapter(config, adapter);
 }
 
 export function resetIntegrationRuntime(): void {

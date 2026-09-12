@@ -15,9 +15,10 @@ export function validateCatalogAdapter(adapter: unknown): adapter is CatalogAdap
 
 /**
  * Factory function for instantiating vendor-neutral CatalogAdapters based on IntegrationConfig.
- * Strictly enforces supported adapter types and fails clearly without silent fallbacks.
+ * Strictly enforces supported adapter types and awaits async provider initialization.
+ * Fails clearly without silent fallbacks or fire-and-forget background execution.
  */
-export function createCatalogAdapter(config: IntegrationConfig): CatalogAdapter {
+export async function createCatalogAdapter(config: IntegrationConfig): Promise<CatalogAdapter> {
   const valResult = validateIntegrationConfig(config);
   if (!valResult.valid) {
     throw new IntegrationError(
@@ -44,13 +45,8 @@ export function createCatalogAdapter(config: IntegrationConfig): CatalogAdapter 
 
     case 'mock': {
       const mockProvider = new MockProviderAdapter(config);
-      // Synchronous initialization trigger for deterministic factory flow
-      mockProvider.initialize().catch((err) => {
-        // Initialization errors caught on query if async
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn(`[MockProvider] Async initialization warning for "${config.integrationId}":`, err);
-        }
-      });
+      // Strictly await async provider initialization
+      await mockProvider.initialize();
       adapter = new ProviderCatalogAdapter(mockProvider);
       break;
     }

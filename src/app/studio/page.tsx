@@ -46,6 +46,7 @@ export default function StudioPage() {
 
   const [runtimeManager] = useState(() => {
     const manager = new IntegrationRuntimeManager();
+    // Synchronous initial local registration
     manager.registerAdapter({
       integrationId: 'local-reference-store',
       name: 'Local Reference Catalog',
@@ -66,23 +67,24 @@ export default function StudioPage() {
 
   // Handle Switching Adapters between Local Reference Catalog and Mock Reference Store
   const handleAdapterChange = async (newType: CatalogAdapterType) => {
-    setSelectedAdapterType(newType);
     try {
       if (newType === 'mock') {
-        runtimeManager.registerAdapter({
+        await runtimeManager.registerAdapter({
           integrationId: 'mock-reference-store',
           name: 'Mock External Provider (Dev Reference)',
           adapterType: 'mock',
           enabled: true,
         });
+        setSelectedAdapterType('mock');
         setStatusMessage('Switched integration boundary to Mock External Provider (Dev Reference).');
       } else {
-        runtimeManager.registerAdapter({
+        await runtimeManager.registerAdapter({
           integrationId: 'local-reference-store',
           name: 'Local Reference Catalog',
           adapterType: 'local',
           enabled: true,
         });
+        setSelectedAdapterType('local');
         setStatusMessage('Switched integration boundary to Local Reference Catalog.');
       }
 
@@ -96,6 +98,7 @@ export default function StudioPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setStatusMessage(`Adapter switch failed: ${msg}`);
+      // UI state selectedAdapterType remains untouched at previous working adapter type
     }
   };
 

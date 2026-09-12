@@ -1,5 +1,11 @@
 import { CatalogProductQuery, PlatformCatalogProduct } from './types';
-import { ProviderAdapter, ProviderProduct, ProviderStatus, ProviderLifecycleState } from './providerTypes';
+import {
+  ProviderAdapter,
+  ProviderProduct,
+  ProviderStatus,
+  ProviderLifecycleState,
+  sanitizeProviderStatus,
+} from './providerTypes';
 import { IntegrationConfig } from './config';
 import { IntegrationError } from './errors';
 import { normalizeProviderProduct } from './providerNormalizer';
@@ -184,7 +190,7 @@ export class MockProviderAdapter implements ProviderAdapter {
   }
 
   public getStatus(): ProviderStatus {
-    return {
+    const rawStatus: ProviderStatus = {
       providerId: this.config.integrationId,
       providerType: 'mock',
       state: this.state,
@@ -198,6 +204,8 @@ export class MockProviderAdapter implements ProviderAdapter {
         fixtureCount: this.invalidFixturesMap.size,
       },
     };
+
+    return sanitizeProviderStatus(rawStatus);
   }
 
   public async getProduct(productId: string): Promise<ProviderProduct | null> {
@@ -253,7 +261,7 @@ export class ProviderCatalogAdapter {
   }
 
   public getProviderStatus(): ProviderStatus {
-    return this.provider.getStatus();
+    return sanitizeProviderStatus(this.provider.getStatus());
   }
 
   public getProvider(): ProviderAdapter {

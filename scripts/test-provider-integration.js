@@ -34,6 +34,7 @@ const {
   validateCatalogProduct,
   ProductOutfitManager,
   resolveProduct3D,
+  sanitizeProviderStatus,
 } = require('../src/lib/integrations');
 
 const { hasAsset, getAsset } = require('../src/lib/3d/assetRegistry');
@@ -91,8 +92,8 @@ async function runProviderIntegrationTests() {
   // Test 4: Unsupported provider rejected
   console.log('\nTest 4: Unsupported Provider Rejected');
   const unsupportedConfig = { ...mockConfig, adapterType: 'unsupported_vendor_x' };
-  assert.throws(
-    () => createCatalogAdapter(unsupportedConfig),
+  await assert.rejects(
+    async () => await createCatalogAdapter(unsupportedConfig),
     (err) => err instanceof IntegrationError && err.code === 'UNSUPPORTED_ADAPTER_TYPE'
   );
   console.log('✔ PASS: Factory rejects unsupported provider adapter type cleanly.');
@@ -130,7 +131,7 @@ async function runProviderIntegrationTests() {
 
   // Test 8: List mock products
   console.log('\nTest 8: List Mock Products');
-  const mockCatalogAdapter = createCatalogAdapter(mockConfig);
+  const mockCatalogAdapter = await createCatalogAdapter(mockConfig);
   const products = await mockCatalogAdapter.getProducts();
   assert.ok(Array.isArray(products));
   assert.ok(products.length >= 3);
@@ -297,7 +298,7 @@ async function runProviderIntegrationTests() {
   // Test 26: Mock adapter works through IntegrationRuntime
   console.log('\nTest 26: Mock Adapter Works Through IntegrationRuntime');
   const runtime = new IntegrationRuntimeManager();
-  runtime.registerAdapter(mockConfig);
+  await runtime.registerAdapter(mockConfig);
   const rtProducts = await runtime.getProducts();
   assert.ok(rtProducts.length >= 3);
   const rtResolved = await runtime.resolveProduct3DById('mock_top_basic_tshirt', 'male');
@@ -306,7 +307,7 @@ async function runProviderIntegrationTests() {
 
   // Test 27: Local adapter still works
   console.log('\nTest 27: Local Adapter Still Works');
-  runtime.registerAdapter(localConfig);
+  await runtime.registerAdapter(localConfig);
   const localProds = await runtime.getProducts();
   assert.ok(localProds.length >= 2);
   const localResolved = await runtime.resolveProduct3DById('prod_basic_tshirt_001', 'male');
@@ -320,7 +321,7 @@ async function runProviderIntegrationTests() {
   assert.strictEqual(prodMgr.getEquippedProduct('top').productId, 'mock_top_basic_tshirt');
 
   // Switch runtime adapter from local back to mock
-  runtime.registerAdapter(mockConfig);
+  await runtime.registerAdapter(mockConfig);
   assert.strictEqual(prodMgr.getEquippedProduct('top').productId, 'mock_top_basic_tshirt');
   console.log('✔ PASS: Switching runtime adapter preserves active ProductOutfitManager state intact.');
 
@@ -329,8 +330,8 @@ async function runProviderIntegrationTests() {
   const prevConfig = runtime.getActiveConfig();
   const prevAdapter = runtime.getActiveAdapter();
 
-  assert.throws(
-    () => runtime.registerAdapter(disabledConfigObj),
+  await assert.rejects(
+    async () => await runtime.registerAdapter(disabledConfigObj),
     (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
   );
 
@@ -398,8 +399,164 @@ async function runProviderIntegrationTests() {
   assert.deepStrictEqual(outfitStateKeys, ['top', 'bottom', 'feet', 'waist', 'hand']);
   console.log('✔ PASS: ProductOutfitManager utilizes the single canonical ProductOutfitState structure.');
 
+  // --- HIGH 1 & HIGH 2 REGRESSION TESTS (37-48) ---
+
+  console.log('\n-----------------------------------------------------------');
+  console.log('Phase 13 Review Fixes: Async Init & ProviderStatus Boundary Tests');
+  console.log('-----------------------------------------------------------\n');
+
+  // Test 37: Successful mock initialization
+  console.log('Test 37: Successful Mock Provider Initialization via createCatalogAdapter');
+  const asyncAdapter = await createCatalogAdapter(mockConfig);
+  assert.ok(asyncAdapter);
+  const asyncProds = await asyncAdapter.getProducts();
+  assert.ok(asyncProds.length >= 3);
+  console.log('✔ PASS: createCatalogAdapter cleanly awaits and initializes mock provider.');
+
+  // Test 38: Failed mock initialization rejects createCatalogAdapter
+  console.log('\nTest 38: Failed Mock Provider Initialization Rejects createCatalogAdapter');
+  await assert.rejects(
+    async () => await createCatalogAdapter(failConfig),
+    (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
+  );
+  console.log('✔ PASS: Async initialization failure properly rejects createCatalogAdapter Promise.');
+
+  // Test 39: Failed initialization does not produce an active adapter
+  console.log('\nTest 39: Failed Initialization Does Not Produce an Active Adapter');
+  const testRuntime39 = new IntegrationRuntimeManager();
+  await assert.rejects(
+    async () => await testRuntime39.registerAdapter(failConfig),
+    (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
+  );
+  assert.strictEqual(testRuntime39.isAdapterConfigured(), false);
+  assert.throws(
+    () => testRuntime39.getActiveAdapter(),
+    (err) => err instanceof IntegrationError && err.code === 'NO_ACTIVE_ADAPTER'
+  );
+  console.log('✔ PASS: Failed initialization leaves runtime cleanly unconfigured.');
+
+  // Test 40: Failed replacement preserves previous adapter and config
+  console.log('\nTest 40: Failed Replacement Preserves Previous Working Adapter & Config');
+  const testRuntime40 = new IntegrationRuntimeManager();
+  await testRuntime40.registerAdapter(localConfig);
+  const initialAdapter = testRuntime40.getActiveAdapter();
+  const initialConfig = testRuntime40.getActiveConfig();
+
+  await assert.rejects(
+    async () => await testRuntime40.registerAdapter(failConfig),
+    (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
+  );
+
+  assert.strictEqual(testRuntime40.getActiveAdapter(), initialAdapter);
+  assert.deepStrictEqual(testRuntime40.getActiveConfig(), initialConfig);
+  console.log('✔ PASS: Failed replacement preserves previous working adapter and config atomically.');
+
+  // Test 41: Simulated initialization failure cannot serve products through runtime
+  console.log('\nTest 41: Simulated Initialization Failure Cannot Serve Products');
+  await assert.rejects(
+    async () => await testRuntime39.getProducts(),
+    (err) => err instanceof IntegrationError && err.code === 'NO_ACTIVE_ADAPTER'
+  );
+  console.log('✔ PASS: Uninitialized runtime cannot serve products.');
+
+  // Test 42: No silent fallback to local on failed mock initialization
+  console.log('\nTest 42: No Silent Fallback to Local on Failed Initialization');
+  const testRuntime42 = new IntegrationRuntimeManager();
+  await assert.rejects(
+    async () => await testRuntime42.registerAdapter({ ...mockConfig, adapterType: 'mock', publicConfig: { simulateInitFailure: true } }),
+    (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
+  );
+  assert.strictEqual(testRuntime42.isAdapterConfigured(), false);
+  console.log('✔ PASS: Zero silent fallback to local adapter occurs.');
+
+  // Test 43: ProviderStatus sanitization purges apiKey, apiSecret, accessToken
+  console.log('\nTest 43: ProviderStatus Sanitization Purges Credentials');
+  const maliciousStatus = {
+    providerId: 'malicious_store',
+    providerType: 'custom',
+    state: 'initialized',
+    initialized: true,
+    details: {
+      productCount: 42,
+      apiKey: 'secret_leak_123',
+      apiSecret: 'secret_leak_456',
+      accessToken: 'bearer_token_789',
+      refreshToken: 'refresh_token_000',
+      clientSecret: 'client_secret_111',
+      webhookSecret: 'whsec_222',
+      password: 'super_password',
+      authorization: 'Bearer token_abc',
+      token: 'raw_token',
+      secret: 'top_secret',
+      credentials: { raw: 'data' },
+      serverConfig: { db: 'connection' },
+      safeMetric: 100,
+    },
+  };
+
+  const cleanStatus = sanitizeProviderStatus(maliciousStatus);
+  assert.strictEqual(cleanStatus.details.apiKey, undefined);
+  assert.strictEqual(cleanStatus.details.apiSecret, undefined);
+  assert.strictEqual(cleanStatus.details.accessToken, undefined);
+  assert.strictEqual(cleanStatus.details.refreshToken, undefined);
+  assert.strictEqual(cleanStatus.details.clientSecret, undefined);
+  assert.strictEqual(cleanStatus.details.webhookSecret, undefined);
+  assert.strictEqual(cleanStatus.details.password, undefined);
+  assert.strictEqual(cleanStatus.details.authorization, undefined);
+  assert.strictEqual(cleanStatus.details.token, undefined);
+  assert.strictEqual(cleanStatus.details.secret, undefined);
+  assert.strictEqual(cleanStatus.details.credentials, undefined);
+  assert.strictEqual(cleanStatus.details.serverConfig, undefined);
+  assert.strictEqual(cleanStatus.details.productCount, 42);
+  assert.strictEqual(cleanStatus.details.safeMetric, 100);
+  console.log('✔ PASS: sanitizeProviderStatus purged all forbidden credential keys from details.');
+
+  // Test 44: ProviderStatus purges non-scalar objects from details
+  console.log('\nTest 44: ProviderStatus Purges Non-Scalar Nested Objects');
+  const nestedStatus = {
+    providerId: 'nested_store',
+    providerType: 'custom',
+    state: 'initialized',
+    initialized: true,
+    details: {
+      safeCount: 5,
+      nestedObj: { hiddenKey: 'val' },
+      funcRef: () => {},
+    },
+  };
+
+  const cleanNestedStatus = sanitizeProviderStatus(nestedStatus);
+  assert.strictEqual(cleanNestedStatus.details.safeCount, 5);
+  assert.strictEqual(cleanNestedStatus.details.nestedObj, undefined);
+  assert.strictEqual(cleanNestedStatus.details.funcRef, undefined);
+  console.log('✔ PASS: ProviderStatus strictly permits scalar operational values only.');
+
+  // Test 45: ProviderCatalogAdapter.getProviderStatus uses sanitizeProviderStatus
+  console.log('\nTest 45: ProviderCatalogAdapter Status Method Is Sanitized');
+  class MaliciousProvider {
+    async initialize() {}
+    getStatus() {
+      return {
+        providerId: 'bad_prov',
+        providerType: 'bad',
+        state: 'initialized',
+        initialized: true,
+        details: { apiKey: 'leaked_key', operationalMetric: 'ok' },
+      };
+    }
+    async getProduct() { return null; }
+    async listProducts() { return []; }
+    normalizeProduct(p) { return p; }
+  }
+
+  const badAdapter = new ProviderCatalogAdapter(new MaliciousProvider());
+  const badStatus = badAdapter.getProviderStatus();
+  assert.strictEqual(badStatus.details.apiKey, undefined);
+  assert.strictEqual(badStatus.details.operationalMetric, 'ok');
+  console.log('✔ PASS: ProviderCatalogAdapter enforces status sanitization boundary on custom providers.');
+
   console.log('\n===========================================================');
-  console.log('\x1b[32mSUCCESS: All 36 Phase 13 Provider Integration Tests Passed!\x1b[0m');
+  console.log('\x1b[32mSUCCESS: All 45 Phase 13 Provider Integration Tests Passed!\x1b[0m');
   console.log('===========================================================');
 }
 
