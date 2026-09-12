@@ -1,6 +1,7 @@
 import { CatalogAdapter, PlatformCatalogProduct } from './types';
 import { IntegrationConfig, validateIntegrationConfig } from './config';
 import { LocalCatalogAdapter } from './localCatalogAdapter';
+import { MockProviderAdapter, ProviderCatalogAdapter } from './mockProvider';
 import { IntegrationError } from './errors';
 
 /**
@@ -38,6 +39,19 @@ export function createCatalogAdapter(config: IntegrationConfig): CatalogAdapter 
     case 'local': {
       const customProducts = config.publicConfig?.initialProducts as PlatformCatalogProduct[] | undefined;
       adapter = new LocalCatalogAdapter(customProducts);
+      break;
+    }
+
+    case 'mock': {
+      const mockProvider = new MockProviderAdapter(config);
+      // Synchronous initialization trigger for deterministic factory flow
+      mockProvider.initialize().catch((err) => {
+        // Initialization errors caught on query if async
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[MockProvider] Async initialization warning for "${config.integrationId}":`, err);
+        }
+      });
+      adapter = new ProviderCatalogAdapter(mockProvider);
       break;
     }
 
