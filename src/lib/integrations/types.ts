@@ -63,3 +63,38 @@ export interface CatalogAdapter {
    */
   getProducts(query?: CatalogProductQuery): Promise<PlatformCatalogProduct[]>;
 }
+
+/**
+ * Equipped item entry in runtime product outfit state.
+ * Contains only minimal references required for deterministic resolution and rendering.
+ * Does NOT store commerce data (price, checkout, payment, inventory).
+ */
+export interface ProductOutfitItem {
+  productId: string;
+  assetId: string;
+  slot: GarmentSlot;
+}
+
+/**
+ * Serializable runtime outfit state keyed by canonical garment slot.
+ * Maps each canonical garment slot to an equipped ProductOutfitItem or null.
+ */
+export type ProductOutfitState = Record<GarmentSlot, ProductOutfitItem | null>;
+
+/**
+ * Versioned, deterministic JSON-serializable representation of ProductOutfitState.
+ */
+export interface SerializedProductOutfitState {
+  version: 1;
+  items: ProductOutfitItem[];
+}
+
+/**
+ * Result contract for product outfit operations (equip, replace, remove).
+ */
+export interface ProductOutfitOperationResult {
+  success: boolean;
+  errors: string[];
+  item?: ProductOutfitItem;
+  replacedItem?: ProductOutfitItem | null;
+}
