@@ -1,5 +1,6 @@
 import { GarmentSlot, CANONICAL_GARMENT_SLOTS } from '../../types/garment';
 import { AvatarId } from '../../types/3d';
+import { getGarmentAsset } from '../3d/assetRegistry';
 import {
   PlatformCatalogProduct,
   CatalogAdapter,
@@ -213,6 +214,9 @@ export class ProductOutfitManager {
   /**
    * Sets active avatar ID and re-validates all equipped products.
    * Purges items incompatible with the new avatar.
+   *
+   * When no CatalogAdapter is available, performs direct asset-level compatibility verification
+   * against AssetRegistry without constructing or inventing fabricated catalog data.
    */
   public async setAvatarId(
     newAvatarId: AvatarId,
@@ -240,21 +244,16 @@ export class ProductOutfitManager {
             isCompatible = false;
           }
         } else {
-          // Fallback resolve directly with dummy catalog product structure referencing item.assetId & slot
-          const dummyProduct: PlatformCatalogProduct = {
-            externalProductId: item.productId,
-            title: item.productId,
-            price: 0,
-            currency: 'USD',
-            availability: 'available',
-            representation: {
-              assetId: item.assetId,
-              garmentSlot: slot,
-              supportedAvatarIds: ['male', 'female'], // validate via AssetRegistry in resolveProduct3D
-            },
-          };
-          const res = resolveProduct3D(dummyProduct, newAvatarId);
-          if (!res.valid) {
+          // Asset-level fallback check directly against AssetRegistry
+          const garmentAsset = getGarmentAsset(item.assetId);
+          if (!garmentAsset) {
+            isCompatible = false;
+          } else if (garmentAsset.slot !== item.slot) {
+            isCompatible = false;
+          } else if (
+            !Array.isArray(garmentAsset.supportedAvatarIds) ||
+            !garmentAsset.supportedAvatarIds.includes(newAvatarId)
+          ) {
             isCompatible = false;
           }
         }

@@ -90,6 +90,15 @@ export interface SerializedProductOutfitState {
 }
 
 /**
+ * Result contract for product outfit serialization.
+ */
+export interface ProductOutfitSerializationResult {
+  success: boolean;
+  errors: string[];
+  data?: SerializedProductOutfitState;
+}
+
+/**
  * Result contract for product outfit operations (equip, replace, remove).
  */
 export interface ProductOutfitOperationResult {

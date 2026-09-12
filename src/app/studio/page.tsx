@@ -16,7 +16,6 @@ import {
   PlatformCatalogProduct,
   ProductOutfitManager,
   serializeProductOutfitState,
-  SerializedProductOutfitState,
 } from '@/lib/integrations';
 import styles from './studio.module.css';
 
@@ -200,10 +199,12 @@ export default function StudioPage() {
     if (serializedOutfitJson) {
       setSerializedOutfitJson(null);
     } else {
-      const serializedState: SerializedProductOutfitState = serializeProductOutfitState(
-        productOutfitManager.getOutfitState()
-      );
-      setSerializedOutfitJson(JSON.stringify(serializedState, null, 2));
+      const serRes = serializeProductOutfitState(productOutfitManager.getOutfitState());
+      if (serRes.success && serRes.data) {
+        setSerializedOutfitJson(JSON.stringify(serRes.data, null, 2));
+      } else {
+        setStatusMessage(`Serialization Error: ${serRes.errors.join('; ')}`);
+      }
     }
   };
 
@@ -371,7 +372,7 @@ export default function StudioPage() {
             {selectedCatalogProduct && (
               <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '0.25rem', lineHeight: 1.3 }}>
                 <div><strong>Product ID:</strong> {selectedCatalogProduct.externalProductId}</div>
-                <div><strong>Brand:</strong> {selectedCatalogProduct.brand || 'N/A'} | <strong>Price:</strong> ${selectedCatalogProduct.price} {selectedCatalogProduct.currency}</div>
+                <div><strong>Brand:</strong> {selectedCatalogProduct.brand || 'N/A'}</div>
                 {selectedCatalogProduct.representation ? (
                   <div style={{ color: '#0071e3', marginTop: '2px' }}>
                     <strong>3D Representation:</strong> {selectedCatalogProduct.representation.assetId} ({selectedCatalogProduct.representation.garmentSlot})

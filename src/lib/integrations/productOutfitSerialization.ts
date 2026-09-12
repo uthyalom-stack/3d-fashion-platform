@@ -5,6 +5,7 @@ import {
   ProductOutfitItem,
   ProductOutfitState,
   SerializedProductOutfitState,
+  ProductOutfitSerializationResult,
   CatalogAdapter,
   ValidationResult,
 } from './types';
@@ -12,36 +13,129 @@ import { createEmptyProductOutfitState } from './productOutfitManager';
 import { resolveProduct3D } from './product3DResolver';
 
 /**
- * Deterministically serializes a ProductOutfitState or array of ProductOutfitItems
- * into a JSON-safe, versioned SerializedProductOutfitState object.
- *
- * Rules:
- * - Version: 1
- * - Items are sorted deterministically by canonical slot order.
- * - No runtime Three.js objects or functions.
- * - No commerce state (price, inventory, etc).
+ * Validates a single ProductOutfitItem entry for strict serialization safety.
  */
-export function serializeProductOutfitState(
-  stateOrItems: ProductOutfitState | ProductOutfitItem[]
-): SerializedProductOutfitState {
-  let itemsList: ProductOutfitItem[] = [];
+function validateOutfitItemForSerialization(
+  rawItem: unknown,
+  expectedSlot?: GarmentSlot
+): string[] {
+  const errors: string[] = [];
 
-  if (Array.isArray(stateOrItems)) {
-    itemsList = [...stateOrItems];
-  } else if (stateOrItems && typeof stateOrItems === 'object') {
-    for (const slot of CANONICAL_GARMENT_SLOTS) {
-      const item = stateOrItems[slot];
-      if (item && item.productId && item.assetId && item.slot) {
-        itemsList.push({
-          productId: String(item.productId).trim(),
-          assetId: String(item.assetId).trim(),
-          slot: item.slot,
-        });
+  if (!rawItem || typeof rawItem !== 'object') {
+    return ['Item is not a valid object.'];
+  }
+
+  const item = rawItem as Record<string, unknown>;
+
+  // Reject forbidden commerce properties inside items
+  if ('price' in item || 'currency' in item || 'checkoutUrl' in item || 'inventory' in item) {
+    errors.push('Item contains forbidden commerce state fields (price, currency, checkoutUrl, inventory).');
+  }
+
+  // productId
+  if (typeof item.productId !== 'string' || item.productId.trim() === '') {
+    errors.push('productId must be a non-empty string.');
+  }
+
+  // slot
+  if (
+    typeof item.slot !== 'string' ||
+    !CANONICAL_GARMENT_SLOTS.includes(item.slot as GarmentSlot)
+  ) {
+    errors.push(`slot "${String(item.slot)}" is invalid. Canonical slots: ${CANONICAL_GARMENT_SLOTS.join(', ')}.`);
+  } else if (expectedSlot && item.slot !== expectedSlot) {
+    errors.push(`slot mismatch: item specifies "${item.slot}", but expected slot "${expectedSlot}".`);
+  }
+
+  // assetId
+  if (typeof item.assetId !== 'string' || item.assetId.trim() === '') {
+    errors.push('assetId must be a non-empty string.');
+  } else {
+    const assetId = item.assetId.trim();
+    if (!hasAsset(assetId)) {
+      errors.push(`assetId "${assetId}" does not exist in AssetRegistry.`);
+    } else {
+      const garmentAsset = getGarmentAsset(assetId);
+      if (!garmentAsset) {
+        errors.push(`assetId "${assetId}" is not a garment asset.`);
+      } else if (typeof item.slot === 'string' && garmentAsset.slot !== item.slot) {
+        errors.push(`assetId "${assetId}" specifies slot "${garmentAsset.slot}", which does not match item slot "${item.slot}".`);
       }
     }
   }
 
-  // Sort items deterministically by slot order index
+  return errors;
+}
+
+/**
+ * Deterministically serializes a ProductOutfitState or array of ProductOutfitItems.
+ * Performs strict validation on every entry before serializing.
+ * Returns an explicit ProductOutfitSerializationResult object `{ success, errors, data }`.
+ *
+ * Does NOT silently discard or drop invalid entries.
+ */
+export function serializeProductOutfitState(
+  stateOrItems: ProductOutfitState | ProductOutfitItem[]
+): ProductOutfitSerializationResult {
+  const errors: string[] = [];
+  const itemsList: ProductOutfitItem[] = [];
+  const seenSlots = new Set<GarmentSlot>();
+
+  if (Array.isArray(stateOrItems)) {
+    for (let i = 0; i < stateOrItems.length; i++) {
+      const rawItem = stateOrItems[i];
+      const itemErrors = validateOutfitItemForSerialization(rawItem);
+
+      if (itemErrors.length > 0) {
+        errors.push(`Item at index ${i} is invalid: ${itemErrors.join('; ')}`);
+      } else {
+        const validItem = rawItem as ProductOutfitItem;
+        if (seenSlots.has(validItem.slot)) {
+          errors.push(`Duplicate slot entry for slot "${validItem.slot}" at index ${i}.`);
+        } else {
+          seenSlots.add(validItem.slot);
+          itemsList.push({
+            productId: validItem.productId.trim(),
+            assetId: validItem.assetId.trim(),
+            slot: validItem.slot,
+          });
+        }
+      }
+    }
+  } else if (stateOrItems && typeof stateOrItems === 'object') {
+    const stateObj = stateOrItems as Record<string, unknown>;
+
+    for (const slot of CANONICAL_GARMENT_SLOTS) {
+      const rawItem = stateObj[slot];
+      if (rawItem !== null && rawItem !== undefined) {
+        const itemErrors = validateOutfitItemForSerialization(rawItem, slot);
+        if (itemErrors.length > 0) {
+          errors.push(`Slot "${slot}" item is invalid: ${itemErrors.join('; ')}`);
+        } else {
+          const validItem = rawItem as ProductOutfitItem;
+          itemsList.push({
+            productId: validItem.productId.trim(),
+            assetId: validItem.assetId.trim(),
+            slot: validItem.slot,
+          });
+        }
+      }
+    }
+  } else {
+    return {
+      success: false,
+      errors: ['Input state or items must be a valid object or array.'],
+    };
+  }
+
+  if (errors.length > 0) {
+    return {
+      success: false,
+      errors,
+    };
+  }
+
+  // Sort items deterministically by canonical slot order, then by productId
   itemsList.sort((a, b) => {
     const indexA = CANONICAL_GARMENT_SLOTS.indexOf(a.slot);
     const indexB = CANONICAL_GARMENT_SLOTS.indexOf(b.slot);
@@ -52,8 +146,12 @@ export function serializeProductOutfitState(
   });
 
   return {
-    version: 1,
-    items: itemsList,
+    success: true,
+    errors: [],
+    data: {
+      version: 1,
+      items: itemsList,
+    },
   };
 }
 

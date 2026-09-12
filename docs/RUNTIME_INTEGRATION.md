@@ -50,14 +50,29 @@ Central runtime manager for catalog-selected outfit state:
 * `removeSlot(slot)`: Clears equipped item in a specific canonical slot.
 * `getEquippedProduct(slot)`: Returns current equipped item for a slot.
 * `getEquippedItems()`: Returns list of all active equipped items.
-* `setAvatarId(newAvatarId, catalogAdapter?)`: Switches target avatar and purges incompatible equipped products.
+* `setAvatarId(newAvatarId, catalogAdapter?)`: Switches target avatar and purges incompatible equipped products. When no `CatalogAdapter` is provided, performs direct asset-level compatibility verification against `AssetRegistry` without inventing or fabricating catalog data.
 
 ### 3. Serialization & Deserialization (`src/lib/integrations/productOutfitSerialization.ts`)
 
 Deterministic, versioned JSON serialization format:
 
-* `serializeProductOutfitState(stateOrItems)`: Produces version 1 JSON-safe payload sorted deterministically by slot index.
-* `deserializeProductOutfitState(input, options?)`: Parses and validates payload version, slot uniqueness, asset existence, asset type, and optional catalog product existence.
+* `serializeProductOutfitState(stateOrItems)`: Returns `{ success, errors, data }`. Performs strict non-lossy validation on every entry before serializing.
+* `deserializeProductOutfitState(input, options?)`: Parses and validates payload structure, canonical slot uniqueness, `AssetRegistry` existence, asset type, and avatar compatibility.
+
+#### Validation Modes for Deserialization:
+
+1. **Without CatalogAdapter (Offline Mode)**:
+   - Validates version (v1), array structure, non-empty `productId` and `assetId`.
+   - Validates canonical slot correctness and rejects duplicate slot entries.
+   - Validates `AssetRegistry` existence, `garment` asset type, and matching asset slot.
+   - Validates avatar compatibility if `avatarId` is supplied.
+   - Does *not* claim or verify external catalog existence.
+
+2. **With CatalogAdapter (Online Catalog Validation Mode)**:
+   - Performs all offline structural and asset checks.
+   - Additionally fetches product record via `CatalogAdapter.getProduct(productId)`.
+   - Verifies product existence in external catalog.
+   - Verifies 3D representation presence, representation `assetId` match, representation `slot` match, and product avatar compatibility.
 
 Serialized Payload Schema (v1):
 
