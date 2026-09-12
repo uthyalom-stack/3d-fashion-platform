@@ -6,12 +6,18 @@ import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
 import { Scene } from '@/components/3d/Scene';
 import { CameraControlsRef, AvatarId } from '@/types/3d';
 import { GarmentSlot, OutfitState, CANONICAL_GARMENT_SLOTS } from '@/types/garment';
-import { OutfitManager, createEmptyOutfitState } from '@/lib/3d/outfitManager';
+import { OutfitManager, createEmptyOutfitState, validateGarmentEquip } from '@/lib/3d/outfitManager';
 import { GARMENT_REGISTRY, DEFAULT_GARMENT_ID } from '@/lib/3d/garmentRegistry';
 import { getAssets, getAsset } from '@/lib/3d/assetRegistry';
 import { resolveAssetUrl } from '@/lib/3d/assetDelivery';
 import { Platform3DAsset, Garment3DAsset } from '@/types/asset';
-import { LocalCatalogAdapter, PlatformCatalogProduct } from '@/lib/integrations';
+import {
+  LocalCatalogAdapter,
+  PlatformCatalogProduct,
+  ProductOutfitManager,
+  resolveProduct3D,
+  serializeProductOutfitState,
+} from '@/lib/integrations';
 import styles from './studio.module.css';
 
 function getInitialOutfitState(): OutfitState {
@@ -35,10 +41,16 @@ export default function StudioPage() {
 
   const selectedAsset: Platform3DAsset | null = getAsset(selectedAssetId);
 
-  // Phase 10 Catalog Handoff Developer Inspection State
+  // Phase 10/11 Catalog & Product Outfit Developer Inspection State
   const [catalogAdapter] = useState(() => new LocalCatalogAdapter());
   const [catalogProducts, setCatalogProducts] = useState<PlatformCatalogProduct[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [serializedOutfitJson, setSerializedOutfitJson] = useState<string | null>(null);
+
+  // Initialize Product Outfit Manager instance
+  const [productOutfitManager] = useState<ProductOutfitManager>(
+    () => new ProductOutfitManager('male')
+  );
 
   useEffect(() => {
     catalogAdapter.getProducts().then((products) => {
@@ -53,7 +65,7 @@ export default function StudioPage() {
     (p) => p.externalProductId === selectedProductId
   );
 
-  // Initialize Outfit Manager instance lazily
+  // Initialize 3D Scene Outfit Manager instance
   const [outfitManager] = useState<OutfitManager>(
     () => new OutfitManager('male', getInitialOutfitState())
   );
@@ -74,17 +86,38 @@ export default function StudioPage() {
 
   const handleAvatarChange = (newAvatarId: AvatarId) => {
     setAvatarId(newAvatarId);
-    const { state: newOutfitState, removedGarments } = outfitManager.setAvatarId(newAvatarId);
-    setOutfitState(newOutfitState);
 
-    if (removedGarments.length > 0) {
-      const removedNames = removedGarments
-        .map((g) => GARMENT_REGISTRY[g.garmentId]?.name || g.garmentId)
-        .join(', ');
-      setStatusMessage(`Auto-unequipped incompatible garment(s) for ${newAvatarId}: ${removedNames}`);
-    } else {
-      setStatusMessage(`Switched active avatar to ${newAvatarId}.`);
-    }
+    // 1. Sync 3D Scene Outfit Manager
+    const { removedGarments } = outfitManager.setAvatarId(newAvatarId);
+
+    // 2. Sync Product Outfit Manager asynchronously
+    productOutfitManager.setAvatarId(newAvatarId, catalogAdapter).then(({ removedItems }) => {
+      // 3. Complete bidirectional alignment across all canonical slots
+      for (const slot of CANONICAL_GARMENT_SLOTS) {
+        const sceneGarmentId = outfitManager.get(slot);
+        const equippedProduct = productOutfitManager.getEquippedProduct(slot);
+
+        if (equippedProduct && !sceneGarmentId) {
+          // Product exists, but scene removed garment -> purge product
+          productOutfitManager.removeSlot(slot);
+        } else if (!equippedProduct && sceneGarmentId) {
+          // Product was removed, but scene still has garment -> unequip scene garment
+          outfitManager.unequip(slot);
+        }
+      }
+
+      // Update React state after complete alignment
+      setOutfitState(outfitManager.getOutfitState());
+
+      if (removedGarments.length > 0 || removedItems.length > 0) {
+        const removedNames = removedGarments
+          .map((g) => GARMENT_REGISTRY[g.garmentId]?.name || g.garmentId)
+          .join(', ');
+        setStatusMessage(`Auto-unequipped incompatible garment(s) for ${newAvatarId}: ${removedNames}`);
+      } else {
+        setStatusMessage(`Switched active avatar to ${newAvatarId}.`);
+      }
+    });
   };
 
   const handleToggleTopGarment = () => {
@@ -92,6 +125,7 @@ export default function StudioPage() {
 
     if (currentTop) {
       outfitManager.unequip('top');
+      productOutfitManager.removeSlot('top');
       setOutfitState(outfitManager.getOutfitState());
       setStatusMessage('Unequipped top garment.');
     } else {
@@ -117,6 +151,7 @@ export default function StudioPage() {
 
   const handleUnequipSlot = (slot: GarmentSlot) => {
     outfitManager.unequip(slot);
+    productOutfitManager.removeSlot(slot);
     setOutfitState(outfitManager.getOutfitState());
     setStatusMessage(`Unequipped garment from slot "${slot}".`);
   };
@@ -142,34 +177,74 @@ export default function StudioPage() {
     }
   };
 
-  const handleResolveCatalogProductToViewer = () => {
+  const handleEquipSelectedProduct = async () => {
     if (!selectedCatalogProduct) return;
 
-    if (!selectedCatalogProduct.representation) {
-      setStatusMessage(`Product "${selectedCatalogProduct.title}" has no 3D representation.`);
+    // Transactional flow:
+    // 1. Resolve and validate the catalog product 3D representation FIRST using ProductOutfitManager logic
+    const resolution = resolveProduct3D(selectedCatalogProduct, avatarId);
+    if (!resolution.valid || !resolution.garmentAsset || !resolution.garmentSlot) {
+      setStatusMessage(`Equip Catalog Product Failed: ${resolution.errors.join('; ')}`);
       return;
     }
 
-    const targetAssetId = selectedCatalogProduct.representation.assetId;
-    const resolvedAsset = getAsset(targetAssetId);
+    const { assetId, slot: garmentSlot } = { assetId: resolution.garmentAsset.assetId, slot: resolution.garmentSlot };
 
-    if (!resolvedAsset) {
-      setStatusMessage(`Integration Contract Error: Asset ID "${targetAssetId}" not found in Asset Registry.`);
+    // 2. Validate scene capability using a dry-run check against validateGarmentEquip FIRST
+    const sceneValidation = validateGarmentEquip(assetId, garmentSlot, avatarId);
+    if (!sceneValidation.valid) {
+      setStatusMessage(`Scene Equip Failed: ${sceneValidation.error}`);
       return;
     }
 
-    if (resolvedAsset.assetType !== 'garment') {
-      setStatusMessage(`Integration Contract Error: Asset ID "${targetAssetId}" is type "${resolvedAsset.assetType}". Only garment assets can be equipped from catalog products.`);
+    // 3. Coordinated mutation: Both product validation and scene validation passed!
+    const opResult = productOutfitManager.equipProduct(selectedCatalogProduct, avatarId);
+    if (!opResult.success || !opResult.item) {
+      setStatusMessage(`Equip Catalog Product Failed: ${opResult.errors.join('; ')}`);
       return;
     }
 
-    const gAsset = resolvedAsset as Garment3DAsset;
-    const result = outfitManager.equip(gAsset.slot, gAsset.assetId);
-    if (result.valid) {
+    // Mutate scene outfit state (guaranteed to succeed since validation passed)
+    const sceneEquipResult = outfitManager.equip(garmentSlot, assetId);
+    if (sceneEquipResult.valid) {
       setOutfitState(outfitManager.getOutfitState());
-      setStatusMessage(`Catalog item resolved -> Equipped 3D Garment "${gAsset.displayName}" (${gAsset.assetId})`);
+      setStatusMessage(
+        `Equipped Catalog Product "${selectedCatalogProduct.title}" (${opResult.item.productId}) -> Asset "${opResult.item.assetId}" into slot "${opResult.item.slot}".`
+      );
     } else {
-      setStatusMessage(`Catalog item equip failed: ${result.error}`);
+      // Fallback safeguard: if scene equip unexpectedly failed, restore product manager
+      if (opResult.replacedItem) {
+        productOutfitManager.equipProductById(opResult.replacedItem.productId, catalogAdapter, avatarId);
+      } else {
+        productOutfitManager.removeSlot(garmentSlot);
+      }
+      setStatusMessage(`Scene Equip Failed: ${sceneEquipResult.error}`);
+    }
+  };
+
+  const handleRemoveSelectedProduct = () => {
+    if (!selectedCatalogProduct) return;
+
+    const res = productOutfitManager.removeProduct(selectedCatalogProduct.externalProductId);
+    if (res.removed && res.slot) {
+      outfitManager.unequip(res.slot);
+      setOutfitState(outfitManager.getOutfitState());
+      setStatusMessage(`Removed product "${selectedCatalogProduct.externalProductId}" from slot "${res.slot}".`);
+    } else {
+      setStatusMessage(`Product "${selectedCatalogProduct.externalProductId}" is not currently equipped.`);
+    }
+  };
+
+  const handleToggleSerializeOutfit = () => {
+    if (serializedOutfitJson) {
+      setSerializedOutfitJson(null);
+    } else {
+      const serRes = serializeProductOutfitState(productOutfitManager.getOutfitState());
+      if (serRes.success && serRes.data) {
+        setSerializedOutfitJson(JSON.stringify(serRes.data, null, 2));
+      } else {
+        setStatusMessage(`Serialization Error: ${serRes.errors.join('; ')}`);
+      }
     }
   };
 
@@ -277,9 +352,9 @@ export default function StudioPage() {
             <strong>Active Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
           </div>
 
-          {/* Catalog Integration Developer Inspection (Phase 10 Foundation) */}
+          {/* Catalog Runtime Integration (Phase 11 Foundation) */}
           <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e5e5ea', paddingTop: '0.5rem' }}>
-            <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>Catalog Integration Handoff:</strong>
+            <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>Product Runtime Integration:</strong>
             <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '2px', marginBottom: '4px' }}>
               Adapter: <strong>LocalCatalogAdapter</strong> | Items: <strong>{catalogProducts.length}</strong>
             </div>
@@ -298,13 +373,13 @@ export default function StudioPage() {
               >
                 {catalogProducts.map((product) => (
                   <option key={product.externalProductId} value={product.externalProductId}>
-                    {product.title} (${product.price.toFixed(2)})
+                    {product.title} {product.representation ? '(3D)' : '(No 3D)'}
                   </option>
                 ))}
               </select>
 
               <button
-                onClick={handleResolveCatalogProductToViewer}
+                onClick={handleEquipSelectedProduct}
                 style={{
                   fontSize: '0.75rem',
                   padding: '2px 6px',
@@ -315,24 +390,73 @@ export default function StudioPage() {
                   cursor: 'pointer',
                 }}
               >
-                Resolve
+                Equip
+              </button>
+
+              <button
+                onClick={handleRemoveSelectedProduct}
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  border: '1px solid #ff3b30',
+                  backgroundColor: '#ff3b30',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                }}
+              >
+                Remove
               </button>
             </div>
 
             {selectedCatalogProduct && (
               <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '0.25rem', lineHeight: 1.3 }}>
-                <div><strong>External Product ID:</strong> {selectedCatalogProduct.externalProductId}</div>
-                <div><strong>Brand:</strong> {selectedCatalogProduct.brand || 'N/A'} | <strong>Price:</strong> ${selectedCatalogProduct.price} {selectedCatalogProduct.currency}</div>
-                <div><strong>Status:</strong> {selectedCatalogProduct.availability}</div>
+                <div><strong>Product ID:</strong> {selectedCatalogProduct.externalProductId}</div>
+                <div><strong>Brand:</strong> {selectedCatalogProduct.brand || 'N/A'}</div>
                 {selectedCatalogProduct.representation ? (
                   <div style={{ color: '#0071e3', marginTop: '2px' }}>
-                    <strong>Mapped Asset ID:</strong> {selectedCatalogProduct.representation.assetId} ({selectedCatalogProduct.representation.garmentSlot})
+                    <strong>3D Representation:</strong> {selectedCatalogProduct.representation.assetId} ({selectedCatalogProduct.representation.garmentSlot})
                   </div>
                 ) : (
-                  <div style={{ color: '#8e8e93', marginTop: '2px' }}>[No 3D Representation Available]</div>
+                  <div style={{ color: '#ff9500', marginTop: '2px' }}>[No 3D Representation Available]</div>
                 )}
               </div>
             )}
+
+            <div style={{ marginTop: '0.4rem' }}>
+              <button
+                onClick={handleToggleSerializeOutfit}
+                style={{
+                  fontSize: '0.72rem',
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  border: '1px solid #0071e3',
+                  backgroundColor: '#ffffff',
+                  color: '#0071e3',
+                  cursor: 'pointer',
+                  width: '100%',
+                }}
+              >
+                {serializedOutfitJson ? 'Hide Serialized Outfit JSON' : 'View Serialized Outfit JSON'}
+              </button>
+              {serializedOutfitJson && (
+                <pre
+                  style={{
+                    fontSize: '0.65rem',
+                    background: '#2c2c2e',
+                    color: '#34c759',
+                    padding: '6px',
+                    borderRadius: '4px',
+                    marginTop: '4px',
+                    maxHeight: '120px',
+                    overflowY: 'auto',
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {serializedOutfitJson}
+                </pre>
+              )}
+            </div>
           </div>
 
           {/* 3D Asset Registry & Persistence Developer Inspection */}
