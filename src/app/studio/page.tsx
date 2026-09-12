@@ -12,10 +12,9 @@ import { getAssets, getAsset } from '@/lib/3d/assetRegistry';
 import { resolveAssetUrl } from '@/lib/3d/assetDelivery';
 import { Platform3DAsset, Garment3DAsset } from '@/types/asset';
 import {
-  LocalCatalogAdapter,
+  IntegrationRuntimeManager,
   PlatformCatalogProduct,
   ProductOutfitManager,
-  resolveProduct3D,
   serializeProductOutfitState,
 } from '@/lib/integrations';
 import styles from './studio.module.css';
@@ -41,8 +40,18 @@ export default function StudioPage() {
 
   const selectedAsset: Platform3DAsset | null = getAsset(selectedAssetId);
 
-  // Phase 10/11 Catalog & Product Outfit Developer Inspection State
-  const [catalogAdapter] = useState(() => new LocalCatalogAdapter());
+  // Phase 12 Integration Runtime & Catalog State
+  const [runtimeManager] = useState(() => {
+    const manager = new IntegrationRuntimeManager();
+    manager.registerAdapter({
+      integrationId: 'local-reference-store',
+      name: 'Local Reference Catalog',
+      adapterType: 'local',
+      enabled: true,
+    });
+    return manager;
+  });
+
   const [catalogProducts, setCatalogProducts] = useState<PlatformCatalogProduct[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [serializedOutfitJson, setSerializedOutfitJson] = useState<string | null>(null);
@@ -53,14 +62,15 @@ export default function StudioPage() {
   );
 
   useEffect(() => {
-    catalogAdapter.getProducts().then((products) => {
+    runtimeManager.getProducts().then((products) => {
       setCatalogProducts(products);
       if (products.length > 0) {
         setSelectedProductId(products[0].externalProductId);
       }
     });
-  }, [catalogAdapter]);
+  }, [runtimeManager]);
 
+  const activeConfig = runtimeManager.getActiveConfig();
   const selectedCatalogProduct = catalogProducts.find(
     (p) => p.externalProductId === selectedProductId
   );
@@ -90,8 +100,9 @@ export default function StudioPage() {
     // 1. Sync 3D Scene Outfit Manager
     const { removedGarments } = outfitManager.setAvatarId(newAvatarId);
 
-    // 2. Sync Product Outfit Manager asynchronously
-    productOutfitManager.setAvatarId(newAvatarId, catalogAdapter).then(({ removedItems }) => {
+    // 2. Sync Product Outfit Manager asynchronously via active runtime catalog adapter
+    const adapter = runtimeManager.getActiveAdapter();
+    productOutfitManager.setAvatarId(newAvatarId, adapter).then(({ removedItems }) => {
       // 3. Complete bidirectional alignment across all canonical slots
       for (const slot of CANONICAL_GARMENT_SLOTS) {
         const sceneGarmentId = outfitManager.get(slot);
@@ -181,8 +192,8 @@ export default function StudioPage() {
     if (!selectedCatalogProduct) return;
 
     // Transactional flow:
-    // 1. Resolve and validate the catalog product 3D representation FIRST using ProductOutfitManager logic
-    const resolution = resolveProduct3D(selectedCatalogProduct, avatarId);
+    // 1. Resolve and validate catalog product 3D representation via runtime boundary FIRST
+    const resolution = runtimeManager.resolveProduct3D(selectedCatalogProduct, avatarId);
     if (!resolution.valid || !resolution.garmentAsset || !resolution.garmentSlot) {
       setStatusMessage(`Equip Catalog Product Failed: ${resolution.errors.join('; ')}`);
       return;
@@ -213,8 +224,9 @@ export default function StudioPage() {
       );
     } else {
       // Fallback safeguard: if scene equip unexpectedly failed, restore product manager
+      const adapter = runtimeManager.getActiveAdapter();
       if (opResult.replacedItem) {
-        productOutfitManager.equipProductById(opResult.replacedItem.productId, catalogAdapter, avatarId);
+        productOutfitManager.equipProductById(opResult.replacedItem.productId, adapter, avatarId);
       } else {
         productOutfitManager.removeSlot(garmentSlot);
       }
@@ -352,11 +364,11 @@ export default function StudioPage() {
             <strong>Active Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
           </div>
 
-          {/* Catalog Runtime Integration (Phase 11 Foundation) */}
+          {/* Catalog Integration Runtime (Phase 12 Integration Boundary) */}
           <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e5e5ea', paddingTop: '0.5rem' }}>
-            <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>Product Runtime Integration:</strong>
+            <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>Integration Runtime Boundary:</strong>
             <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '2px', marginBottom: '4px' }}>
-              Adapter: <strong>LocalCatalogAdapter</strong> | Items: <strong>{catalogProducts.length}</strong>
+              Adapter: <strong>{activeConfig?.name || 'Unconfigured'}</strong> ({activeConfig?.adapterType || 'none'}) | Items: <strong>{catalogProducts.length}</strong>
             </div>
             <div style={{ display: 'flex', gap: '4px', marginTop: '0.25rem' }}>
               <select
