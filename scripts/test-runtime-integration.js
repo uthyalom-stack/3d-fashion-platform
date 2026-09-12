@@ -555,8 +555,120 @@ async function runTests() {
   assert.deepStrictEqual(ser44.data, serialized18);
   console.log('✔ PASS: Test 44: Deterministic serialization remains unchanged for valid state');
 
+  // ----------------------------------------------------
+  // Product <-> 3D Scene Outfit State Synchronization Tests (45-48)
+  // ----------------------------------------------------
+  console.log('\n----------------------------------------------------');
+  console.log('Product <-> 3D Scene Outfit State Synchronization Tests (45-48)');
+  console.log('----------------------------------------------------');
+
+  const { OutfitManager: TestOutfitManager } = require('../src/lib/3d/outfitManager');
+
+  // Test 45: Product equip succeeds and 3D scene sync succeeds
+  const syncPom45 = new ProductOutfitManager('male');
+  const syncOm45 = new TestOutfitManager('male');
+
+  const prodToEquip45 = validProd;
+  const rep45 = prodToEquip45.representation;
+
+  // Scene equip first (simulation of handleEquipSelectedProduct pattern)
+  const sceneRes45 = syncOm45.equip(rep45.garmentSlot, rep45.assetId);
+  assert.strictEqual(sceneRes45.valid, true);
+
+  const prodRes45 = syncPom45.equipProduct(prodToEquip45, 'male');
+  assert.strictEqual(prodRes45.success, true);
+
+  assert.strictEqual(syncOm45.get('top'), 'garment.top.basic-tshirt');
+  assert.strictEqual(syncPom45.getEquippedProduct('top').productId, 'prod_basic_tshirt_001');
+  console.log('✔ PASS: Test 45: Product runtime equip succeeds and scene sync succeeds');
+
+  // Test 46: Scene equip failure does not leave ProductOutfitManager claiming product is equipped
+  const syncPom46 = new ProductOutfitManager('female'); // Active female avatar
+  const syncOm46 = new TestOutfitManager('female');
+
+  // Attempt to equip male-only product on female avatar scene
+  const maleOnlyRep46 = maleOnlyProduct.representation;
+  const sceneRes46 = syncOm46.equip(maleOnlyRep46.garmentSlot, maleOnlyRep46.assetId);
+  assert.strictEqual(sceneRes46.valid, false, 'Scene equip must fail for male-only item on female avatar');
+
+  // Scene failed: do NOT mutate ProductOutfitManager
+  if (sceneRes46.valid) {
+    syncPom46.equipProduct(maleOnlyProduct, 'female');
+  }
+
+  assert.strictEqual(syncOm46.get('top'), null, 'Scene top slot must remain empty');
+  assert.strictEqual(syncPom46.getEquippedProduct('top'), null, 'ProductOutfitManager top slot must remain empty');
+  console.log('✔ PASS: Test 46: Scene equip failure does not leave ProductOutfitManager claiming product is equipped');
+
+  // Test 47: Same-slot replacement failure preserves previous product in both state managers
+  const syncPom47 = new ProductOutfitManager('male');
+  const syncOm47 = new TestOutfitManager('male');
+
+  // Equip initial valid product
+  syncOm47.equip('top', 'garment.top.basic-tshirt');
+  syncPom47.equipProduct(validProd, 'male');
+
+  assert.strictEqual(syncOm47.get('top'), 'garment.top.basic-tshirt');
+  assert.strictEqual(syncPom47.getEquippedProduct('top').productId, 'prod_basic_tshirt_001');
+
+  // Attempt to replace with an invalid asset ID in scene
+  const invalidAssetProd = {
+    externalProductId: 'prod_invalid_asset_replace',
+    title: 'Invalid Asset Item',
+    price: 30,
+    currency: 'USD',
+    availability: 'available',
+    representation: {
+      assetId: 'garment.top.non_existent_asset_id',
+      garmentSlot: 'top',
+      supportedAvatarIds: ['male'],
+    },
+  };
+
+  const sceneRes47 = syncOm47.equip(invalidAssetProd.representation.garmentSlot, invalidAssetProd.representation.assetId);
+  assert.strictEqual(sceneRes47.valid, false, 'Scene replacement with non-existent asset must fail');
+
+  if (sceneRes47.valid) {
+    syncPom47.equipProduct(invalidAssetProd, 'male');
+  }
+
+  assert.strictEqual(syncOm47.get('top'), 'garment.top.basic-tshirt', 'Scene must preserve original garment');
+  assert.strictEqual(syncPom47.getEquippedProduct('top').productId, 'prod_basic_tshirt_001', 'ProductOutfitManager must preserve original product');
+  console.log('✔ PASS: Test 47: Same-slot replacement failure preserves previous product');
+
+  // Test 48: Avatar switch keeps product runtime and rendered outfit state synchronized
+  const syncPom48 = new ProductOutfitManager('male');
+  const syncOm48 = new TestOutfitManager('male');
+
+  // Equip male-only product into top slot
+  syncOm48.equip('top', 'garment.top.male-only-test');
+  syncPom48.equipProduct(maleOnlyProduct, 'male');
+
+  assert.strictEqual(syncOm48.get('top'), 'garment.top.male-only-test');
+  assert.strictEqual(syncPom48.getEquippedProduct('top').productId, 'prod_male_only_test_001');
+
+  // Switch avatar to female on both managers
+  const omSync48 = syncOm48.setAvatarId('female');
+  const pomSync48 = await syncPom48.setAvatarId('female');
+
+  // Ensure alignment
+  for (const slot of ['top', 'bottom', 'feet', 'waist', 'hand']) {
+    const sceneGarmentId = syncOm48.get(slot);
+    const equippedProduct = syncPom48.getEquippedProduct(slot);
+
+    if (!sceneGarmentId && equippedProduct) {
+      syncPom48.removeSlot(slot);
+    }
+  }
+
+  assert.strictEqual(omSync48.removedGarments.length, 1);
+  assert.strictEqual(pomSync48.removedItems.length, 1);
+  assert.strictEqual(syncOm48.get('top'), null, 'Scene top slot must be empty after avatar switch');
+  assert.strictEqual(syncPom48.getEquippedProduct('top'), null, 'ProductOutfitManager top slot must be empty after avatar switch');
+  console.log('✔ PASS: Test 48: Avatar switch keeps product/runtime and rendered outfit state synchronized');
+
   console.log('\n====================================================');
-  console.log('\x1b[32m%s\x1b[0m', 'SUCCESS: All 44 Phase 11 Integration Runtime Unit Tests Passed!');
+  console.log('\x1b[32m%s\x1b[0m', 'SUCCESS: All 48 Phase 11 Integration Runtime Unit Tests Passed!');
   console.log('====================================================\n');
 }
 

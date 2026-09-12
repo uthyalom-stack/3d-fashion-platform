@@ -90,8 +90,18 @@ export default function StudioPage() {
     const { state: newOutfitState, removedGarments } = outfitManager.setAvatarId(newAvatarId);
     setOutfitState(newOutfitState);
 
-    // Sync Product Outfit Manager
+    // Sync Product Outfit Manager and ensure strict alignment with 3D scene outfit manager
     productOutfitManager.setAvatarId(newAvatarId, catalogAdapter).then(({ removedItems }) => {
+      // Re-align product outfit slots with active scene outfit state if any divergence occurred
+      for (const slot of CANONICAL_GARMENT_SLOTS) {
+        const sceneGarmentId = outfitManager.get(slot);
+        const equippedProduct = productOutfitManager.getEquippedProduct(slot);
+
+        if (!sceneGarmentId && equippedProduct) {
+          productOutfitManager.removeSlot(slot);
+        }
+      }
+
       if (removedGarments.length > 0 || removedItems.length > 0) {
         const removedNames = removedGarments
           .map((g) => GARMENT_REGISTRY[g.garmentId]?.name || g.garmentId)
@@ -163,22 +173,38 @@ export default function StudioPage() {
   const handleEquipSelectedProduct = () => {
     if (!selectedCatalogProduct) return;
 
-    const opResult = productOutfitManager.equipProduct(selectedCatalogProduct, avatarId);
-
-    if (!opResult.success || !opResult.item) {
-      setStatusMessage(`Equip Catalog Product Failed: ${opResult.errors.join('; ')}`);
+    // 1. First validate product 3D representation and target slot/asset compatibility
+    if (!selectedCatalogProduct.representation) {
+      setStatusMessage(`Equip Catalog Product Failed: Product "${selectedCatalogProduct.externalProductId}" has no 3D representation.`);
       return;
     }
 
-    // Sync 3D Scene Outfit State
-    const sceneEquipResult = outfitManager.equip(opResult.item.slot, opResult.item.assetId);
-    if (sceneEquipResult.valid) {
+    const { assetId, garmentSlot } = selectedCatalogProduct.representation;
+
+    // 2. Validate scene equip capability against OutfitManager FIRST before mutating ProductOutfitManager
+    const sceneEquipResult = outfitManager.equip(garmentSlot, assetId);
+    if (!sceneEquipResult.valid) {
+      setStatusMessage(`Scene Equip Failed: ${sceneEquipResult.error}`);
+      return;
+    }
+
+    // 3. Scene equip succeeded: now commit state update to ProductOutfitManager
+    const opResult = productOutfitManager.equipProduct(selectedCatalogProduct, avatarId);
+
+    if (opResult.success && opResult.item) {
       setOutfitState(outfitManager.getOutfitState());
       setStatusMessage(
         `Equipped Catalog Product "${selectedCatalogProduct.title}" (${opResult.item.productId}) -> Asset "${opResult.item.assetId}" into slot "${opResult.item.slot}".`
       );
     } else {
-      setStatusMessage(`Scene Equip Failed: ${sceneEquipResult.error}`);
+      // Rollback scene equip if product outfit manager equip unexpectedly fails
+      if (opResult.replacedItem) {
+        outfitManager.equip(opResult.replacedItem.slot, opResult.replacedItem.assetId);
+      } else {
+        outfitManager.unequip(garmentSlot);
+      }
+      setOutfitState(outfitManager.getOutfitState());
+      setStatusMessage(`Equip Catalog Product Failed: ${opResult.errors.join('; ')}`);
     }
   };
 
