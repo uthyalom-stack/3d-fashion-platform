@@ -63,7 +63,7 @@ async function runIntegrationRuntimeTests() {
 
   // Test 1: Local adapter factory
   console.log('Test 1: Local Adapter Factory');
-  const factoryAdapter = createCatalogAdapter(localConfig);
+  const factoryAdapter = await createCatalogAdapter(localConfig);
   assert.ok(validateCatalogAdapter(factoryAdapter));
   assert.ok(factoryAdapter instanceof LocalCatalogAdapter);
   console.log('✔ PASS: createCatalogAdapter instantiates LocalCatalogAdapter correctly.');
@@ -71,8 +71,8 @@ async function runIntegrationRuntimeTests() {
   // Test 2: Unsupported adapter rejection
   console.log('\nTest 2: Unsupported Adapter Rejection');
   const unsupportedConfig = { ...localConfig, adapterType: 'shopify' };
-  assert.throws(
-    () => createCatalogAdapter(unsupportedConfig),
+  await assert.rejects(
+    async () => await createCatalogAdapter(unsupportedConfig),
     (err) => err instanceof IntegrationError && err.code === 'UNSUPPORTED_ADAPTER_TYPE'
   );
   console.log('✔ PASS: Unsupported adapter type "shopify" rejected with UNSUPPORTED_ADAPTER_TYPE error.');
@@ -89,7 +89,7 @@ async function runIntegrationRuntimeTests() {
 
   // Test 4: Adapter registration
   console.log('\nTest 4: Adapter Registration');
-  freshRuntime.registerAdapter(localConfig);
+  await freshRuntime.registerAdapter(localConfig);
   assert.strictEqual(freshRuntime.isAdapterConfigured(), true);
   console.log('✔ PASS: Adapter registered successfully and runtime marked as configured.');
 
@@ -104,7 +104,7 @@ async function runIntegrationRuntimeTests() {
   console.log('\nTest 6: Adapter Replacement');
   const secondConfig = { ...localConfig, integrationId: 'ref_local_store_2', name: 'Second Store' };
   const customAdapterInstance = new LocalCatalogAdapter();
-  freshRuntime.registerAdapter(secondConfig, customAdapterInstance);
+  await freshRuntime.registerAdapter(secondConfig, customAdapterInstance);
   assert.strictEqual(freshRuntime.getActiveAdapter(), customAdapterInstance);
   assert.strictEqual(freshRuntime.getActiveConfig().name, 'Second Store');
   console.log('✔ PASS: Active adapter replaced deterministically with custom adapter instance.');
@@ -119,7 +119,7 @@ async function runIntegrationRuntimeTests() {
   // --- CATALOG OPERATIONS TESTS (8-12) ---
 
   const runtime = new IntegrationRuntimeManager();
-  runtime.registerAdapter(localConfig);
+  await runtime.registerAdapter(localConfig);
 
   // Test 8: Product listing
   console.log('\nTest 8: Product Listing');
@@ -394,7 +394,7 @@ async function runIntegrationRuntimeTests() {
   console.log('\nTest 29: Adapter Replacement Does Not Corrupt Existing Runtime State');
   const preState = productOutfitMgr.getOutfitState();
   const newLocalAdapter = new LocalCatalogAdapter();
-  runtime.registerAdapter({ ...localConfig, name: 'Replaced Adapter Store' }, newLocalAdapter);
+  await runtime.registerAdapter({ ...localConfig, name: 'Replaced Adapter Store' }, newLocalAdapter);
   const postState = productOutfitMgr.getOutfitState();
   assert.deepStrictEqual(preState, postState);
   assert.strictEqual(runtime.getActiveConfig().name, 'Replaced Adapter Store');
@@ -420,8 +420,8 @@ async function runIntegrationRuntimeTests() {
   const configBefore31 = runtime.getActiveConfig();
   const invalidConfig = { ...localConfig, integrationId: '' }; // Invalid integrationId
 
-  assert.throws(
-    () => runtime.registerAdapter(invalidConfig),
+  await assert.rejects(
+    async () => await runtime.registerAdapter(invalidConfig),
     (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
   );
   assert.strictEqual(runtime.getActiveAdapter(), activeBefore31);
@@ -434,8 +434,8 @@ async function runIntegrationRuntimeTests() {
   const configBefore32 = runtime.getActiveConfig();
   const disabledConfig = { ...localConfig, enabled: false };
 
-  assert.throws(
-    () => runtime.registerAdapter(disabledConfig),
+  await assert.rejects(
+    async () => await runtime.registerAdapter(disabledConfig),
     (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
   );
   assert.strictEqual(runtime.getActiveAdapter(), activeBefore32);
@@ -448,8 +448,8 @@ async function runIntegrationRuntimeTests() {
   const configBefore33 = runtime.getActiveConfig();
   const malformedAdapter = { getProduct: () => {} }; // Missing getProducts
 
-  assert.throws(
-    () => runtime.registerAdapter(localConfig, malformedAdapter),
+  await assert.rejects(
+    async () => await runtime.registerAdapter(localConfig, malformedAdapter),
     (err) => err instanceof IntegrationError && err.code === 'INVALID_ADAPTER'
   );
   assert.strictEqual(runtime.getActiveAdapter(), activeBefore33);
@@ -462,8 +462,8 @@ async function runIntegrationRuntimeTests() {
   const configBefore34 = runtime.getActiveConfig();
   const unsupportedRegConfig = { ...localConfig, adapterType: 'woocommerce' };
 
-  assert.throws(
-    () => runtime.registerAdapter(unsupportedRegConfig),
+  await assert.rejects(
+    async () => await runtime.registerAdapter(unsupportedRegConfig),
     (err) => err instanceof IntegrationError && err.code === 'UNSUPPORTED_ADAPTER_TYPE'
   );
   assert.strictEqual(runtime.getActiveAdapter(), activeBefore34);
@@ -484,7 +484,7 @@ async function runIntegrationRuntimeTests() {
   // Test 36: Full End-to-End Integration Boundary Execution
   console.log('\nTest 36: Complete Integration Runtime Boundary Pipeline');
   const pipelineRuntime = new IntegrationRuntimeManager();
-  pipelineRuntime.registerAdapter({
+  await pipelineRuntime.registerAdapter({
     integrationId: 'e2e_store',
     name: 'E2E Store Catalog',
     adapterType: 'local',

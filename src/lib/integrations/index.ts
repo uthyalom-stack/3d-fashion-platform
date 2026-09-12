@@ -9,3 +9,6 @@ export * from './product3DResolver';
 export * from './productOutfitManager';
 export * from './productOutfitSerialization';
 export * from './runtime';
+export * from './providerTypes';
+export * from './providerNormalizer';
+export * from './mockProvider';

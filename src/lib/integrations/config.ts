@@ -2,9 +2,9 @@ import { ValidationResult } from './types';
 
 /**
  * Supported adapter types for external integration layer.
- * Currently supports 'local' reference adapter.
+ * Supports 'local' reference adapter and 'mock' reference provider adapter.
  */
-export type CatalogAdapterType = 'local' | (string & {});
+export type CatalogAdapterType = 'local' | 'mock' | (string & {});
 
 /**
  * Public, browser-safe configuration for an integration adapter.

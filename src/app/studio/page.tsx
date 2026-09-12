@@ -16,6 +16,7 @@ import {
   PlatformCatalogProduct,
   ProductOutfitManager,
   serializeProductOutfitState,
+  CatalogAdapterType,
 } from '@/lib/integrations';
 import styles from './studio.module.css';
 
@@ -40,9 +41,12 @@ export default function StudioPage() {
 
   const selectedAsset: Platform3DAsset | null = getAsset(selectedAssetId);
 
-  // Phase 12 Integration Runtime & Catalog State
+  // Phase 13 Developer Integration Runtime & Selector State
+  const [selectedAdapterType, setSelectedAdapterType] = useState<CatalogAdapterType>('local');
+
   const [runtimeManager] = useState(() => {
     const manager = new IntegrationRuntimeManager();
+    // Synchronous initial local registration
     manager.registerAdapter({
       integrationId: 'local-reference-store',
       name: 'Local Reference Catalog',
@@ -60,6 +64,43 @@ export default function StudioPage() {
   const [productOutfitManager] = useState<ProductOutfitManager>(
     () => new ProductOutfitManager('male')
   );
+
+  // Handle Switching Adapters between Local Reference Catalog and Mock Reference Store
+  const handleAdapterChange = async (newType: CatalogAdapterType) => {
+    try {
+      if (newType === 'mock') {
+        await runtimeManager.registerAdapter({
+          integrationId: 'mock-reference-store',
+          name: 'Mock External Provider (Dev Reference)',
+          adapterType: 'mock',
+          enabled: true,
+        });
+        setSelectedAdapterType('mock');
+        setStatusMessage('Switched integration boundary to Mock External Provider (Dev Reference).');
+      } else {
+        await runtimeManager.registerAdapter({
+          integrationId: 'local-reference-store',
+          name: 'Local Reference Catalog',
+          adapterType: 'local',
+          enabled: true,
+        });
+        setSelectedAdapterType('local');
+        setStatusMessage('Switched integration boundary to Local Reference Catalog.');
+      }
+
+      const products = await runtimeManager.getProducts();
+      setCatalogProducts(products);
+      if (products.length > 0) {
+        setSelectedProductId(products[0].externalProductId);
+      } else {
+        setSelectedProductId('');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatusMessage(`Adapter switch failed: ${msg}`);
+      // UI state selectedAdapterType remains untouched at previous working adapter type
+    }
+  };
 
   useEffect(() => {
     runtimeManager.getProducts().then((products) => {
@@ -364,9 +405,30 @@ export default function StudioPage() {
             <strong>Active Avatar:</strong> {avatarId === 'male' ? 'Male Base' : 'Female Base'}
           </div>
 
-          {/* Catalog Integration Runtime (Phase 12 Integration Boundary) */}
+          {/* Catalog Integration Runtime (Phase 13 Integration Boundary) */}
           <div style={{ marginTop: '0.5rem', borderTop: '1px solid #e5e5ea', paddingTop: '0.5rem' }}>
             <strong style={{ fontSize: '0.8rem', color: '#0071e3' }}>Integration Runtime Boundary:</strong>
+
+            {/* Developer Adapter Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.72rem', color: '#333', fontWeight: 'bold' }}>Provider:</label>
+              <select
+                value={selectedAdapterType}
+                onChange={(e) => handleAdapterChange(e.target.value as CatalogAdapterType)}
+                style={{
+                  flex: 1,
+                  fontSize: '0.72rem',
+                  padding: '2px 4px',
+                  borderRadius: '4px',
+                  border: '1px solid #0071e3',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <option value="local">Local Reference Catalog</option>
+                <option value="mock">Mock Reference Store (Dev Provider)</option>
+              </select>
+            </div>
+
             <div style={{ fontSize: '0.72rem', color: '#555', marginTop: '2px', marginBottom: '4px' }}>
               Adapter: <strong>{activeConfig?.name || 'Unconfigured'}</strong> ({activeConfig?.adapterType || 'none'}) | Items: <strong>{catalogProducts.length}</strong>
             </div>
