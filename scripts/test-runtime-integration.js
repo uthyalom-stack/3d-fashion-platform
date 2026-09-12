@@ -34,13 +34,42 @@ const {
   deserializeProductOutfitState,
 } = require('../src/lib/integrations');
 
-const { getAsset } = require('../src/lib/3d/assetRegistry');
+const { getAsset, saveAssetToRepository } = require('../src/lib/3d/assetRegistry');
 
 console.log('====================================================');
 console.log('Phase 11 — Integration Runtime & Product/Outfit State Unit Tests');
 console.log('====================================================\n');
 
 async function runTests() {
+  // Register a male-only test garment asset in AssetRegistry for compatibility testing
+  const maleOnlyGarmentAsset = {
+    assetId: 'garment.top.male-only-test',
+    assetType: 'garment',
+    schemaVersion: '1.0',
+    version: '1.0.0',
+    displayName: 'Male Only Test Vest',
+    slot: 'top',
+    supportedAvatarIds: ['male'],
+    location: {
+      source: 'local',
+      path: '/models/garment/top/GARMENT_top_basic_tshirt.glb',
+    },
+  };
+  await saveAssetToRepository(maleOnlyGarmentAsset);
+
+  const maleOnlyProduct = {
+    externalProductId: 'prod_male_only_test_001',
+    title: 'Male Only Test Vest',
+    price: 50,
+    currency: 'USD',
+    availability: 'available',
+    representation: {
+      assetId: 'garment.top.male-only-test',
+      garmentSlot: 'top',
+      supportedAvatarIds: ['male'],
+    },
+  };
+
   const adapter = new LocalCatalogAdapter();
 
   // ----------------------------------------------------
@@ -228,7 +257,7 @@ async function runTests() {
     currency: 'USD',
     availability: 'available',
     representation: {
-      assetId: 'garment.top.basic-tshirt',
+      assetId: 'garment.top.male-only-test',
       garmentSlot: 'top',
       supportedAvatarIds: ['male'],
     },
@@ -399,20 +428,19 @@ async function runTests() {
   assert.strictEqual(syncRes32.removedItems.length, 0);
   console.log('✔ PASS: Test 32: Avatar switching with CatalogAdapter succeeds');
 
-  // Test 33: Incompatible asset removed during catalog-less avatar switch
+  // Test 33: Genuine incompatible asset removed during catalog-less avatar switch
   const pom33 = new ProductOutfitManager('male');
-  // Equipping item directly into state that supports only 'male' avatar
-  const maleOnlyItem = {
-    productId: 'prod_male_item',
-    assetId: 'garment.top.basic-tshirt',
-    slot: 'top',
-  };
+  const op33 = pom33.equipProduct(maleOnlyProduct, 'male');
+  assert.strictEqual(op33.success, true, 'Male-only garment should equip successfully on male avatar');
+  assert.strictEqual(pom33.getEquippedProduct('top').productId, 'prod_male_only_test_001');
 
-  // Temporarily stub/test an asset that only supports male if needed, or verify logic with custom avatar
-  // Let's create an item with assetId referencing an asset that does NOT support female
-  // We can test by calling setAvatarId with an incompatible target
-  const syncRes33 = await pom33.setAvatarId('female');
-  console.log('✔ PASS: Test 33: Incompatible asset removed during avatar switch');
+  const syncRes33 = await pom33.setAvatarId('female'); // No CatalogAdapter supplied
+  assert.strictEqual(syncRes33.removedItems.length, 1, 'Incompatible male-only garment must be purged on switch to female');
+  assert.strictEqual(pom33.getEquippedProduct('top'), null, 'Top slot must be null after purging incompatible garment');
+  assert.strictEqual(syncRes33.removedItems[0].slot, 'top');
+  assert.strictEqual(syncRes33.removedItems[0].item.productId, 'prod_male_only_test_001');
+  assert.strictEqual(syncRes33.removedItems[0].item.assetId, 'garment.top.male-only-test');
+  console.log('✔ PASS: Test 33: Genuine incompatible asset removed during catalog-less avatar switch');
 
   // Test 34: Compatible asset retained during avatar switch
   const pom34 = new ProductOutfitManager('male');
@@ -422,12 +450,26 @@ async function runTests() {
   assert.strictEqual(pom34.getEquippedProduct('top').productId, 'prod_basic_tshirt_001');
   console.log('✔ PASS: Test 34: Compatible asset retained during avatar switch');
 
-  // Test 35: No fabricated commerce data used by runtime fallback
+  // Test 35: Catalog-less fallback operates strictly from AssetRegistry without fabricated commerce data
   const pom35 = new ProductOutfitManager('male');
   pom35.equipProduct(validProd, 'male');
-  const syncRes35 = await pom35.setAvatarId('female'); // catalog-less path
-  assert.ok(syncRes35.state);
-  console.log('✔ PASS: Test 35: No fabricated commerce data used by runtime fallback');
+  const syncRes35 = await pom35.setAvatarId('female'); // Catalog-less path
+  const state35 = pom35.getOutfitState();
+  assert.strictEqual(state35.top.productId, 'prod_basic_tshirt_001');
+  assert.strictEqual(state35.top.assetId, 'garment.top.basic-tshirt');
+  assert.strictEqual(state35.top.slot, 'top');
+  assert.strictEqual('price' in state35.top, false);
+  assert.strictEqual('currency' in state35.top, false);
+  assert.strictEqual('title' in state35.top, false);
+  assert.strictEqual('brand' in state35.top, false);
+  assert.strictEqual('availability' in state35.top, false);
+
+  // Source code assertion to ensure no dummyProduct fallback exists in productOutfitManager.ts
+  const managerSourceCode = fs.readFileSync(path.join(__dirname, '../src/lib/integrations/productOutfitManager.ts'), 'utf8');
+  assert.strictEqual(managerSourceCode.includes('dummyProduct'), false, 'productOutfitManager.ts must not contain dummyProduct fallback');
+  assert.strictEqual(managerSourceCode.includes('price: 0'), false, 'productOutfitManager.ts must not contain price: 0 fallback');
+  assert.strictEqual(managerSourceCode.includes('currency:'), false, 'productOutfitManager.ts must not contain currency fallback');
+  console.log('✔ PASS: Test 35: Catalog-less fallback operates strictly from AssetRegistry without fabricated commerce data');
 
   // Test 36: Malformed serialization rejected rather than silently dropped
   const malformedItemsForSer = [
