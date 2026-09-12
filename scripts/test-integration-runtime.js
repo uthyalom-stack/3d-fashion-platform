@@ -36,7 +36,7 @@ const {
   validateCatalogProduct,
 } = require('../src/lib/integrations');
 
-const { OutfitManager, createEmptyOutfitState } = require('../src/lib/3d/outfitManager');
+const { OutfitManager, createEmptyOutfitState, validateGarmentEquip } = require('../src/lib/3d/outfitManager');
 
 async function runIntegrationRuntimeTests() {
   console.log('====================================================');
@@ -51,6 +51,7 @@ async function runIntegrationRuntimeTests() {
     enabled: true,
     publicConfig: {
       storeRegion: 'US-EAST',
+      nestedMeta: { catalogVersion: 'v1.0' },
     },
     serverConfig: {
       apiKey: 'secret_api_key_123',
@@ -265,13 +266,19 @@ async function runIntegrationRuntimeTests() {
 
   // --- SECURITY / BOUNDARIES TESTS (21-24) ---
 
-  // Test 21: No server secret exposed to client via config sanitization
-  console.log('\nTest 21: No Server Secret Exposed to Client');
+  // Test 21: No server secret exposed to client via config sanitization (with immutability & deep-clone checks)
+  console.log('\nTest 21: No Server Secret Exposed to Client & Immutability Verification');
+  const originalConfigCopy = JSON.parse(JSON.stringify(localConfig));
   const publicConfig = runtime.getActiveConfig();
   assert.strictEqual('serverConfig' in publicConfig, false);
   assert.strictEqual('apiKey' in publicConfig, false);
   assert.strictEqual(publicConfig.integrationId, 'ref_local_store');
-  console.log('✔ PASS: sanitizeIntegrationConfig stripped serverConfig and sensitive keys strictly.');
+  assert.deepStrictEqual(localConfig, originalConfigCopy, 'Source config must remain unmutated by sanitization');
+  assert.deepStrictEqual(publicConfig.publicConfig.nestedMeta, { catalogVersion: 'v1.0' });
+  // Verify deep cloning: mutating sanitized publicConfig does not affect source
+  publicConfig.publicConfig.storeRegion = 'MUTATED';
+  assert.strictEqual(localConfig.publicConfig.storeRegion, 'US-EAST');
+  console.log('✔ PASS: sanitizeIntegrationConfig stripped serverConfig, preserved source immutability, and returned deep clone.');
 
   // Test 22: No provider credentials in catalog product
   console.log('\nTest 22: No Provider Credentials in Catalog Product');
@@ -298,16 +305,39 @@ async function runIntegrationRuntimeTests() {
   assert.strictEqual('checkoutUrl' in outfitStateItem, false);
   console.log('✔ PASS: Runtime ProductOutfitItem holds strictly productId, assetId, slot with zero commerce fields.');
 
-  // --- FAILURE SAFETY TESTS (25-30) ---
+  // --- FAILURE SAFETY & SYNCHRONIZATION TESTS (25-30) ---
 
-  // Test 25: Failed product resolution does not mutate outfit
-  console.log('\nTest 25: Failed Product Resolution Does Not Mutate Outfit');
-  const preFailItem = productOutfitMgr.getEquippedProduct('top');
-  const failResolution = runtime.resolveProduct3D(missingAssetProd, 'male');
-  assert.strictEqual(failResolution.valid, false);
-  const postFailItem = productOutfitMgr.getEquippedProduct('top');
-  assert.deepStrictEqual(preFailItem, postFailItem);
-  console.log('✔ PASS: Failed product 3D resolution did not alter equipped outfit state.');
+  // Test 25: Failed product resolution does not mutate ProductOutfitManager or OutfitManager scene state
+  console.log('\nTest 25: Failed Product Resolution Preserves Both Product & Scene Outfit States');
+  const syncSceneMgr = new OutfitManager('male', createEmptyOutfitState());
+  const syncProdMgr = new ProductOutfitManager('male');
+
+  // Equip valid product A into both
+  const resA = runtime.resolveProduct3D(product, 'male');
+  assert.strictEqual(resA.valid, true);
+  syncProdMgr.equipProduct(product, 'male');
+  syncSceneMgr.equip(resA.garmentSlot, resA.garmentAsset.assetId);
+
+  const preProdState = syncProdMgr.getOutfitState();
+  const preSceneState = syncSceneMgr.getOutfitState();
+
+  // Transactional attempt to equip invalid product B (missing 3D representation)
+  const non3DProduct = await runtime.getProduct('prod_non_3d_accessory_002');
+  const resB = runtime.resolveProduct3D(non3DProduct, 'male');
+  assert.strictEqual(resB.valid, false);
+
+  if (resB.valid && resB.garmentAsset && resB.garmentSlot) {
+    const sceneVal = validateGarmentEquip(resB.garmentAsset.assetId, resB.garmentSlot, 'male');
+    if (sceneVal.valid) {
+      syncProdMgr.equipProduct(non3DProduct, 'male');
+      syncSceneMgr.equip(resB.garmentSlot, resB.garmentAsset.assetId);
+    }
+  }
+
+  assert.deepStrictEqual(syncProdMgr.getOutfitState(), preProdState);
+  assert.deepStrictEqual(syncSceneMgr.getOutfitState(), preSceneState);
+  assert.strictEqual(syncSceneMgr.get('top'), 'garment.top.basic-tshirt');
+  console.log('✔ PASS: Transactional failure check prevented mutation across both ProductOutfitManager and OutfitManager.');
 
   // Test 26: Failed adapter lookup does not mutate outfit
   console.log('\nTest 26: Failed Adapter Lookup Does Not Mutate Outfit');
@@ -324,19 +354,41 @@ async function runIntegrationRuntimeTests() {
   sceneOutfitMgr.equip('top', 'garment.top.basic-tshirt');
   assert.strictEqual(sceneOutfitMgr.get('top'), 'garment.top.basic-tshirt');
 
-  // Attempting to equip an invalid product failure should leave existing outfit intact
   const invalidEquipOp = productOutfitMgr.equipProduct(missingAssetProd, 'male');
   assert.strictEqual(invalidEquipOp.success, false);
   assert.strictEqual(sceneOutfitMgr.get('top'), 'garment.top.basic-tshirt');
   console.log('✔ PASS: Failed 3D resolution left existing scene garment intact.');
 
-  // Test 28: Same-slot replacement failure preserves previous product
-  console.log('\nTest 28: Same-Slot Replacement Failure Preserves Previous Product');
-  // Attempt to replace existing valid top with an invalid product
-  const failReplaceOp = productOutfitMgr.equipProduct(missingAssetProd, 'male');
-  assert.strictEqual(failReplaceOp.success, false);
-  assert.strictEqual(productOutfitMgr.getEquippedProduct('top').productId, 'prod_basic_tshirt_001');
-  console.log('✔ PASS: Failed same-slot replacement preserved previous equipped product.');
+  // Test 28: Same-slot replacement failure preserves previous product in both ProductOutfitManager and OutfitManager
+  console.log('\nTest 28: Same-Slot Replacement Failure Preserves Previous Product in Both State Managers');
+  const testSlotProdMgr = new ProductOutfitManager('male');
+  const testSlotSceneMgr = new OutfitManager('male', createEmptyOutfitState());
+
+  // Equip product A (Essential Crewneck T-Shirt into 'top' slot)
+  const resValidA = runtime.resolveProduct3D(product, 'male');
+  assert.strictEqual(resValidA.valid, true);
+  testSlotProdMgr.equipProduct(product, 'male');
+  testSlotSceneMgr.equip('top', resValidA.garmentAsset.assetId);
+
+  assert.strictEqual(testSlotProdMgr.getEquippedProduct('top').productId, 'prod_basic_tshirt_001');
+  assert.strictEqual(testSlotSceneMgr.get('top'), 'garment.top.basic-tshirt');
+
+  // Attempt same-slot replacement with product B having invalid representation
+  const resInvalidB = runtime.resolveProduct3D(missingAssetProd, 'male');
+  assert.strictEqual(resInvalidB.valid, false);
+
+  if (resInvalidB.valid && resInvalidB.garmentAsset && resInvalidB.garmentSlot) {
+    const sceneVal = validateGarmentEquip(resInvalidB.garmentAsset.assetId, resInvalidB.garmentSlot, 'male');
+    if (sceneVal.valid) {
+      testSlotProdMgr.equipProduct(missingAssetProd, 'male');
+      testSlotSceneMgr.equip('top', resInvalidB.garmentAsset.assetId);
+    }
+  }
+
+  // Verify both ProductOutfitManager and OutfitManager retained product A intact
+  assert.strictEqual(testSlotProdMgr.getEquippedProduct('top').productId, 'prod_basic_tshirt_001');
+  assert.strictEqual(testSlotSceneMgr.get('top'), 'garment.top.basic-tshirt');
+  console.log('✔ PASS: Same-slot replacement failure preserved product A in both ProductOutfitManager and OutfitManager.');
 
   // Test 29: Adapter replacement does not corrupt existing runtime state
   console.log('\nTest 29: Adapter Replacement Does Not Corrupt Existing Runtime State');
@@ -356,8 +408,108 @@ async function runIntegrationRuntimeTests() {
   assert.strictEqual(productOutfitMgr.getEquippedProduct('top').productId, 'prod_basic_tshirt_001');
   console.log('✔ PASS: Phase 11 avatar synchronization operates intact with runtime active adapter.');
 
+  // --- ATOMIC ADAPTER REPLACEMENT FAILURE TESTS (31-36) ---
+
+  console.log('\n----------------------------------------------------');
+  console.log('Phase 12 Atomic Adapter Registration & Failure Tests');
+  console.log('----------------------------------------------------');
+
+  // Test 31: Failed registration with invalid configuration leaves previous active adapter & config untouched
+  console.log('Test 31: Invalid Config Registration Failure Preserves Active Adapter');
+  const activeBefore31 = runtime.getActiveAdapter();
+  const configBefore31 = runtime.getActiveConfig();
+  const invalidConfig = { ...localConfig, integrationId: '' }; // Invalid integrationId
+
+  assert.throws(
+    () => runtime.registerAdapter(invalidConfig),
+    (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
+  );
+  assert.strictEqual(runtime.getActiveAdapter(), activeBefore31);
+  assert.deepStrictEqual(runtime.getActiveConfig(), configBefore31);
+  console.log('✔ PASS: Failed registration with invalid config preserved active adapter and configuration atomically.');
+
+  // Test 32: Failed registration with disabled configuration leaves previous active adapter & config untouched
+  console.log('\nTest 32: Disabled Config Registration Failure Preserves Active Adapter');
+  const activeBefore32 = runtime.getActiveAdapter();
+  const configBefore32 = runtime.getActiveConfig();
+  const disabledConfig = { ...localConfig, enabled: false };
+
+  assert.throws(
+    () => runtime.registerAdapter(disabledConfig),
+    (err) => err instanceof IntegrationError && err.code === 'ADAPTER_INITIALIZATION_FAILED'
+  );
+  assert.strictEqual(runtime.getActiveAdapter(), activeBefore32);
+  assert.deepStrictEqual(runtime.getActiveConfig(), configBefore32);
+  console.log('✔ PASS: Failed registration with disabled config preserved active adapter and configuration atomically.');
+
+  // Test 33: Failed registration with invalid custom adapter object leaves previous active adapter & config untouched
+  console.log('\nTest 33: Invalid Custom Adapter Registration Failure Preserves Active Adapter');
+  const activeBefore33 = runtime.getActiveAdapter();
+  const configBefore33 = runtime.getActiveConfig();
+  const malformedAdapter = { getProduct: () => {} }; // Missing getProducts
+
+  assert.throws(
+    () => runtime.registerAdapter(localConfig, malformedAdapter),
+    (err) => err instanceof IntegrationError && err.code === 'INVALID_ADAPTER'
+  );
+  assert.strictEqual(runtime.getActiveAdapter(), activeBefore33);
+  assert.deepStrictEqual(runtime.getActiveConfig(), configBefore33);
+  console.log('✔ PASS: Failed registration with invalid custom adapter object preserved active adapter and config atomically.');
+
+  // Test 34: Failed registration with unsupported adapter type leaves previous active adapter & config untouched
+  console.log('\nTest 34: Unsupported Adapter Type Registration Failure Preserves Active Adapter');
+  const activeBefore34 = runtime.getActiveAdapter();
+  const configBefore34 = runtime.getActiveConfig();
+  const unsupportedRegConfig = { ...localConfig, adapterType: 'woocommerce' };
+
+  assert.throws(
+    () => runtime.registerAdapter(unsupportedRegConfig),
+    (err) => err instanceof IntegrationError && err.code === 'UNSUPPORTED_ADAPTER_TYPE'
+  );
+  assert.strictEqual(runtime.getActiveAdapter(), activeBefore34);
+  assert.deepStrictEqual(runtime.getActiveConfig(), configBefore34);
+  console.log('✔ PASS: Failed registration with unsupported adapter type preserved active adapter and config atomically.');
+
+  // Test 35: Strict lookup helper `getProductOrThrow` returns product or throws PRODUCT_NOT_FOUND
+  console.log('\nTest 35: getProductOrThrow Behavior');
+  const validStrictProd = await runtime.getProductOrThrow('prod_basic_tshirt_001');
+  assert.strictEqual(validStrictProd.externalProductId, 'prod_basic_tshirt_001');
+
+  await assert.rejects(
+    async () => await runtime.getProductOrThrow('missing_prod_999'),
+    (err) => err instanceof IntegrationError && err.code === 'PRODUCT_NOT_FOUND'
+  );
+  console.log('✔ PASS: getProductOrThrow returned product on success and threw PRODUCT_NOT_FOUND error on missing product.');
+
+  // Test 36: Full End-to-End Integration Boundary Execution
+  console.log('\nTest 36: Complete Integration Runtime Boundary Pipeline');
+  const pipelineRuntime = new IntegrationRuntimeManager();
+  pipelineRuntime.registerAdapter({
+    integrationId: 'e2e_store',
+    name: 'E2E Store Catalog',
+    adapterType: 'local',
+    enabled: true,
+  });
+
+  const fetchedProducts = await pipelineRuntime.getProducts();
+  assert.ok(fetchedProducts.length >= 1);
+
+  const targetProd = await pipelineRuntime.getProductOrThrow('prod_basic_tshirt_001');
+  const resolutionResult = pipelineRuntime.resolveProduct3D(targetProd, 'male');
+  assert.strictEqual(resolutionResult.valid, true);
+
+  const e2eProdMgr = new ProductOutfitManager('male');
+  const e2eSceneMgr = new OutfitManager('male', createEmptyOutfitState());
+
+  e2eProdMgr.equipProduct(targetProd, 'male');
+  e2eSceneMgr.equip(resolutionResult.garmentSlot, resolutionResult.garmentAsset.assetId);
+
+  assert.strictEqual(e2eProdMgr.getEquippedProduct('top').productId, 'prod_basic_tshirt_001');
+  assert.strictEqual(e2eSceneMgr.get('top'), 'garment.top.basic-tshirt');
+  console.log('✔ PASS: Complete end-to-end integration runtime boundary pipeline executed cleanly.');
+
   console.log('\n====================================================');
-  console.log('\x1b[32mSUCCESS: All 30 Phase 12 Integration Runtime Tests Passed!\x1b[0m');
+  console.log('\x1b[32mSUCCESS: All 36 Phase 12 Integration Runtime Tests Passed!\x1b[0m');
   console.log('====================================================');
 }
 

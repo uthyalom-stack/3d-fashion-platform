@@ -1,5 +1,5 @@
 import { CatalogAdapter, PlatformCatalogProduct, CatalogProductQuery } from './types';
-import { IntegrationConfig, PublicIntegrationConfig, sanitizeIntegrationConfig } from './config';
+import { IntegrationConfig, PublicIntegrationConfig, validateIntegrationConfig, sanitizeIntegrationConfig } from './config';
 import { createCatalogAdapter, validateCatalogAdapter } from './adapterFactory';
 import { IntegrationError } from './errors';
 import { resolveProduct3D, Product3DResolutionResult } from './product3DResolver';
@@ -15,9 +15,29 @@ export class IntegrationRuntimeManager {
 
   /**
    * Registers and activates an integration adapter.
-   * If custom adapter is provided, validates it; otherwise instantiates via factory.
+   * Validates configuration and adapter contract atomically before committing active state.
    */
   public registerAdapter(config: IntegrationConfig, adapter?: CatalogAdapter): void {
+    // 1. Validate IntegrationConfig structure
+    const configVal = validateIntegrationConfig(config);
+    if (!configVal.valid) {
+      throw new IntegrationError(
+        'ADAPTER_INITIALIZATION_FAILED',
+        `Invalid integration configuration: ${configVal.errors.join('; ')}`
+      );
+    }
+
+    // 2. Verify enabled status
+    if (!config.enabled) {
+      throw new IntegrationError(
+        'ADAPTER_INITIALIZATION_FAILED',
+        `Integration "${config.integrationId}" is disabled`
+      );
+    }
+
+    let targetAdapter: CatalogAdapter;
+
+    // 3. Obtain or validate adapter instance
     if (adapter) {
       if (!validateCatalogAdapter(adapter)) {
         throw new IntegrationError(
@@ -25,19 +45,14 @@ export class IntegrationRuntimeManager {
           'Provided adapter object does not satisfy CatalogAdapter interface'
         );
       }
-      if (!config.enabled) {
-        throw new IntegrationError(
-          'ADAPTER_INITIALIZATION_FAILED',
-          `Integration "${config.integrationId}" is disabled`
-        );
-      }
-      this.activeConfig = { ...config };
-      this.activeAdapter = adapter;
+      targetAdapter = adapter;
     } else {
-      const createdAdapter = createCatalogAdapter(config);
-      this.activeConfig = { ...config };
-      this.activeAdapter = createdAdapter;
+      targetAdapter = createCatalogAdapter(config);
     }
+
+    // 4. Atomic commit: Mutate active state only after all validations pass
+    this.activeConfig = JSON.parse(JSON.stringify(config));
+    this.activeAdapter = targetAdapter;
   }
 
   /**
@@ -87,6 +102,20 @@ export class IntegrationRuntimeManager {
   public async getProduct(productId: string): Promise<PlatformCatalogProduct | null> {
     const adapter = this.getActiveAdapter();
     return adapter.getProduct(productId);
+  }
+
+  /**
+   * Strict product lookup that throws IntegrationError with code PRODUCT_NOT_FOUND if missing.
+   */
+  public async getProductOrThrow(productId: string): Promise<PlatformCatalogProduct> {
+    const product = await this.getProduct(productId);
+    if (!product) {
+      throw new IntegrationError(
+        'PRODUCT_NOT_FOUND',
+        `Product with ID "${productId}" was not found in active catalog`
+      );
+    }
+    return product;
   }
 
   /**
@@ -144,6 +173,10 @@ export function getProducts(query?: CatalogProductQuery): Promise<PlatformCatalo
 
 export function getProduct(productId: string): Promise<PlatformCatalogProduct | null> {
   return globalRuntimeManager.getProduct(productId);
+}
+
+export function getProductOrThrow(productId: string): Promise<PlatformCatalogProduct> {
+  return globalRuntimeManager.getProductOrThrow(productId);
 }
 
 export function resolveRuntimeProduct3D(

@@ -80,10 +80,15 @@ export function validateIntegrationConfig(config: unknown): ValidationResult {
 
 /**
  * Sanitizes an IntegrationConfig for client-safe exposure by stripping out serverConfig.
- * Preserves public configuration immutably.
+ * Returns a deep-cloned PublicIntegrationConfig without mutating the source object.
  */
 export function sanitizeIntegrationConfig(config: IntegrationConfig): PublicIntegrationConfig {
-  const publicOnly: Partial<IntegrationConfig> = { ...config };
-  delete publicOnly.serverConfig;
-  return JSON.parse(JSON.stringify(publicOnly)) as PublicIntegrationConfig;
+  if (!config || typeof config !== 'object') {
+    throw new Error('Invalid integration configuration object');
+  }
+
+  const cloned: Partial<IntegrationConfig> = JSON.parse(JSON.stringify(config));
+  delete cloned.serverConfig;
+
+  return cloned as PublicIntegrationConfig;
 }

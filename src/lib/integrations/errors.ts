@@ -1,5 +1,12 @@
 /**
  * Deterministic error codes for external integration runtime operations.
+ *
+ * Usage Conventions:
+ * - Domain validation results (e.g. missing 3D representation, unknown asset in registry,
+ *   slot or avatar mismatch during resolution) use `Product3DResolutionResult { valid, errors }`
+ *   to preserve canonical Phase 11 resolution contracts.
+ * - Runtime boundary failures (unregistered adapter, invalid/disabled config, invalid adapter,
+ *   unsupported type, strict lookup assertions) throw `IntegrationError` with explicit codes.
  */
 export type IntegrationErrorCode =
   | 'NO_ACTIVE_ADAPTER'
