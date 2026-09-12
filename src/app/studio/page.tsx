@@ -6,7 +6,7 @@ import { ViewerCanvas } from '@/components/3d/ViewerCanvas';
 import { Scene } from '@/components/3d/Scene';
 import { CameraControlsRef, AvatarId } from '@/types/3d';
 import { GarmentSlot, OutfitState, CANONICAL_GARMENT_SLOTS } from '@/types/garment';
-import { OutfitManager, createEmptyOutfitState } from '@/lib/3d/outfitManager';
+import { OutfitManager, createEmptyOutfitState, validateGarmentEquip } from '@/lib/3d/outfitManager';
 import { GARMENT_REGISTRY, DEFAULT_GARMENT_ID } from '@/lib/3d/garmentRegistry';
 import { getAssets, getAsset } from '@/lib/3d/assetRegistry';
 import { resolveAssetUrl } from '@/lib/3d/assetDelivery';
@@ -15,6 +15,7 @@ import {
   LocalCatalogAdapter,
   PlatformCatalogProduct,
   ProductOutfitManager,
+  resolveProduct3D,
   serializeProductOutfitState,
 } from '@/lib/integrations';
 import styles from './studio.module.css';
@@ -86,21 +87,27 @@ export default function StudioPage() {
   const handleAvatarChange = (newAvatarId: AvatarId) => {
     setAvatarId(newAvatarId);
 
-    // Sync 3D Scene Outfit Manager
-    const { state: newOutfitState, removedGarments } = outfitManager.setAvatarId(newAvatarId);
-    setOutfitState(newOutfitState);
+    // 1. Sync 3D Scene Outfit Manager
+    const { removedGarments } = outfitManager.setAvatarId(newAvatarId);
 
-    // Sync Product Outfit Manager and ensure strict alignment with 3D scene outfit manager
+    // 2. Sync Product Outfit Manager asynchronously
     productOutfitManager.setAvatarId(newAvatarId, catalogAdapter).then(({ removedItems }) => {
-      // Re-align product outfit slots with active scene outfit state if any divergence occurred
+      // 3. Complete bidirectional alignment across all canonical slots
       for (const slot of CANONICAL_GARMENT_SLOTS) {
         const sceneGarmentId = outfitManager.get(slot);
         const equippedProduct = productOutfitManager.getEquippedProduct(slot);
 
-        if (!sceneGarmentId && equippedProduct) {
+        if (equippedProduct && !sceneGarmentId) {
+          // Product exists, but scene removed garment -> purge product
           productOutfitManager.removeSlot(slot);
+        } else if (!equippedProduct && sceneGarmentId) {
+          // Product was removed, but scene still has garment -> unequip scene garment
+          outfitManager.unequip(slot);
         }
       }
+
+      // Update React state after complete alignment
+      setOutfitState(outfitManager.getOutfitState());
 
       if (removedGarments.length > 0 || removedItems.length > 0) {
         const removedNames = removedGarments
@@ -170,41 +177,48 @@ export default function StudioPage() {
     }
   };
 
-  const handleEquipSelectedProduct = () => {
+  const handleEquipSelectedProduct = async () => {
     if (!selectedCatalogProduct) return;
 
-    // 1. First validate product 3D representation and target slot/asset compatibility
-    if (!selectedCatalogProduct.representation) {
-      setStatusMessage(`Equip Catalog Product Failed: Product "${selectedCatalogProduct.externalProductId}" has no 3D representation.`);
+    // Transactional flow:
+    // 1. Resolve and validate the catalog product 3D representation FIRST using ProductOutfitManager logic
+    const resolution = resolveProduct3D(selectedCatalogProduct, avatarId);
+    if (!resolution.valid || !resolution.garmentAsset || !resolution.garmentSlot) {
+      setStatusMessage(`Equip Catalog Product Failed: ${resolution.errors.join('; ')}`);
       return;
     }
 
-    const { assetId, garmentSlot } = selectedCatalogProduct.representation;
+    const { assetId, slot: garmentSlot } = { assetId: resolution.garmentAsset.assetId, slot: resolution.garmentSlot };
 
-    // 2. Validate scene equip capability against OutfitManager FIRST before mutating ProductOutfitManager
-    const sceneEquipResult = outfitManager.equip(garmentSlot, assetId);
-    if (!sceneEquipResult.valid) {
-      setStatusMessage(`Scene Equip Failed: ${sceneEquipResult.error}`);
+    // 2. Validate scene capability using a dry-run check against validateGarmentEquip FIRST
+    const sceneValidation = validateGarmentEquip(assetId, garmentSlot, avatarId);
+    if (!sceneValidation.valid) {
+      setStatusMessage(`Scene Equip Failed: ${sceneValidation.error}`);
       return;
     }
 
-    // 3. Scene equip succeeded: now commit state update to ProductOutfitManager
+    // 3. Coordinated mutation: Both product validation and scene validation passed!
     const opResult = productOutfitManager.equipProduct(selectedCatalogProduct, avatarId);
+    if (!opResult.success || !opResult.item) {
+      setStatusMessage(`Equip Catalog Product Failed: ${opResult.errors.join('; ')}`);
+      return;
+    }
 
-    if (opResult.success && opResult.item) {
+    // Mutate scene outfit state (guaranteed to succeed since validation passed)
+    const sceneEquipResult = outfitManager.equip(garmentSlot, assetId);
+    if (sceneEquipResult.valid) {
       setOutfitState(outfitManager.getOutfitState());
       setStatusMessage(
         `Equipped Catalog Product "${selectedCatalogProduct.title}" (${opResult.item.productId}) -> Asset "${opResult.item.assetId}" into slot "${opResult.item.slot}".`
       );
     } else {
-      // Rollback scene equip if product outfit manager equip unexpectedly fails
+      // Fallback safeguard: if scene equip unexpectedly failed, restore product manager
       if (opResult.replacedItem) {
-        outfitManager.equip(opResult.replacedItem.slot, opResult.replacedItem.assetId);
+        productOutfitManager.equipProductById(opResult.replacedItem.productId, catalogAdapter, avatarId);
       } else {
-        outfitManager.unequip(garmentSlot);
+        productOutfitManager.removeSlot(garmentSlot);
       }
-      setOutfitState(outfitManager.getOutfitState());
-      setStatusMessage(`Equip Catalog Product Failed: ${opResult.errors.join('; ')}`);
+      setStatusMessage(`Scene Equip Failed: ${sceneEquipResult.error}`);
     }
   };
 
