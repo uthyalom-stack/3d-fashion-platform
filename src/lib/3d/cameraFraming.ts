@@ -20,6 +20,24 @@ export interface CameraFramingResult {
   };
 }
 
+/**
+ * Resolves the root avatar object (e.g. `avatar-root-*` container) from a node in the scene graph
+ * to ensure top-level transforms and scale are captured in bounding box calculations.
+ */
+export function resolveAvatarRoot(object: THREE.Object3D | null | undefined): THREE.Object3D | null | undefined {
+  if (!object) return object;
+  let targetObject: THREE.Object3D = object;
+  let curr: THREE.Object3D | null = object;
+  while (curr) {
+    if (curr.name && curr.name.startsWith('avatar-root-')) {
+      targetObject = curr;
+      break;
+    }
+    curr = curr.parent;
+  }
+  return targetObject;
+}
+
 const DEFAULT_RESULT: CameraFramingResult = {
   target: [0, 1.0, 0],
   position: [0, 1.2, 3.5],

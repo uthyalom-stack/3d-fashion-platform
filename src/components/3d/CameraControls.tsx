@@ -6,7 +6,7 @@ import { useThree } from '@react-three/fiber';
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { OrbitControls } from '@react-three/drei';
 import { CAMERA_LIMITS } from '@/lib/3d/constants';
-import { calculateCameraFraming, CameraFramingResult } from '@/lib/3d/cameraFraming';
+import { calculateCameraFraming, resolveAvatarRoot, CameraFramingResult } from '@/lib/3d/cameraFraming';
 import { CameraControlsRef } from '@/types/3d';
 
 export interface CameraControlsProps {
@@ -16,6 +16,7 @@ export interface CameraControlsProps {
 
 export const Controls = forwardRef<CameraControlsRef, CameraControlsProps>(({ enabled = true, avatarScene }, ref) => {
   const controlsRef = useRef<OrbitControlsImpl>(null);
+  const prevAvatarRef = useRef<THREE.Object3D | null>(null);
   const { camera, size } = useThree();
   const [framing, setFraming] = useState<CameraFramingResult | null>(null);
 
@@ -25,54 +26,38 @@ export const Controls = forwardRef<CameraControlsRef, CameraControlsProps>(({ en
   useEffect(() => {
     if (!avatarScene) return;
 
-    // Use parent container if available to ensure any wrapper transform is captured
-    let targetObject: THREE.Object3D = avatarScene;
-    let curr: THREE.Object3D | null = avatarScene;
-    while (curr) {
-      if (curr.name && curr.name.startsWith('avatar-root-')) {
-        targetObject = curr;
-        break;
-      }
-      curr = curr.parent;
-    }
-
+    const targetObject = resolveAvatarRoot(avatarScene) ?? avatarScene;
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
     const fov = perspectiveCamera.fov ?? 45;
 
     const calculatedFraming = calculateCameraFraming(targetObject, { fov, aspect });
     setFraming(calculatedFraming);
 
-    if (controlsRef.current) {
-      controlsRef.current.object.position.set(...calculatedFraming.position);
-      controlsRef.current.target.set(...calculatedFraming.target);
-      controlsRef.current.update();
+    // Reposition camera and target ONLY on initial load or avatar model switch
+    const isNewAvatar = prevAvatarRef.current !== avatarScene;
+    if (isNewAvatar) {
+      prevAvatarRef.current = avatarScene;
+      if (controlsRef.current) {
+        controlsRef.current.object.position.set(...calculatedFraming.position);
+        controlsRef.current.target.set(...calculatedFraming.target);
+        controlsRef.current.update();
+      }
     }
   }, [avatarScene, camera, aspect]);
 
   useImperativeHandle(ref, () => ({
     resetCamera: () => {
-      if (controlsRef.current) {
-        if (framing) {
-          controlsRef.current.object.position.set(...framing.position);
-          controlsRef.current.target.set(...framing.target);
-        } else if (avatarScene) {
-          let targetObject: THREE.Object3D = avatarScene;
-          let curr: THREE.Object3D | null = avatarScene;
-          while (curr) {
-            if (curr.name && curr.name.startsWith('avatar-root-')) {
-              targetObject = curr;
-              break;
-            }
-            curr = curr.parent;
-          }
-          const perspectiveCamera = camera as THREE.PerspectiveCamera;
-          const fov = perspectiveCamera.fov ?? 45;
-          const calculatedFraming = calculateCameraFraming(targetObject, { fov, aspect });
-          controlsRef.current.object.position.set(...calculatedFraming.position);
-          controlsRef.current.target.set(...calculatedFraming.target);
-        }
-        controlsRef.current.update();
-      }
+      if (!controlsRef.current) return;
+
+      const targetObject = resolveAvatarRoot(avatarScene) ?? avatarScene;
+      const perspectiveCamera = camera as THREE.PerspectiveCamera;
+      const fov = perspectiveCamera.fov ?? 45;
+      const calculatedFraming = calculateCameraFraming(targetObject, { fov, aspect });
+
+      setFraming(calculatedFraming);
+      controlsRef.current.object.position.set(...calculatedFraming.position);
+      controlsRef.current.target.set(...calculatedFraming.target);
+      controlsRef.current.update();
     },
   }));
 

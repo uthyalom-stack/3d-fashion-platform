@@ -21,7 +21,7 @@ if (!require.extensions['.ts']) {
   require.extensions['.ts'] = loadTsModule;
 }
 
-const { calculateCameraFraming } = require('../src/lib/3d/cameraFraming.ts');
+const { calculateCameraFraming, resolveAvatarRoot } = require('../src/lib/3d/cameraFraming.ts');
 
 function isFiniteArray(arr) {
   return Array.isArray(arr) && arr.every((val) => typeof val === 'number' && Number.isFinite(val));
@@ -119,6 +119,18 @@ function runCameraFramingTests() {
   assert.ok(desktopFraming.minDistance >= 0.4, 'minDistance prevents entering body');
   assert.ok(desktopFraming.maxDistance <= 15.0, 'maxDistance prevents absurd far distance');
   console.log('✓ PASS: Distance limits enforce safety bounds');
+
+  // Test 9: resolveAvatarRoot traverses parent hierarchy for avatar-root-* container
+  const parentRoot = new THREE.Group();
+  parentRoot.name = 'avatar-root-male';
+  const childGroup = new THREE.Group();
+  const deepChildMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.75, 0.3));
+  parentRoot.add(childGroup);
+  childGroup.add(deepChildMesh);
+
+  const resolved = resolveAvatarRoot(deepChildMesh);
+  assert.strictEqual(resolved, parentRoot, 'resolveAvatarRoot must resolve parent avatar-root-* container');
+  console.log('✓ PASS: resolveAvatarRoot cleanly extracts avatar-root container');
 
   console.log('--- ALL CAMERA FRAMING UNIT TESTS PASSED SUCCESSFULLY ---');
 }
