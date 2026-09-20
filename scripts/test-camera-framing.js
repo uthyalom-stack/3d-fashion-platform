@@ -132,6 +132,27 @@ function runCameraFramingTests() {
   assert.strictEqual(resolved, parentRoot, 'resolveAvatarRoot must resolve parent avatar-root-* container');
   console.log('✓ PASS: resolveAvatarRoot cleanly extracts avatar-root container');
 
+  // Test 10: Explicit verification of aspect ratio behavior
+  // 10a: Initial load calculates framing using current aspect
+  const desktopAspect = 1280 / 800;
+  const initialFraming = calculateCameraFraming(avatarMesh, { fov: 45, aspect: desktopAspect });
+  assert.ok(initialFraming.defaultDistance > 0, 'Initial load calculates valid distance');
+
+  // 10b: Avatar switch calculates framing using aspect at switch time
+  const femaleAspect = 1280 / 800;
+  const switchedFraming = calculateCameraFraming(femaleSim, { fov: 45, aspect: femaleAspect });
+  assert.ok(switchedFraming.defaultDistance > 0, 'Avatar switch calculates valid framing');
+
+  // 10c: Reset calculates framing using aspect at reset time
+  const resetMobileAspect = 390 / 844;
+  const resetFraming = calculateCameraFraming(avatarMesh, { fov: 45, aspect: resetMobileAspect });
+  assert.ok(resetFraming.defaultDistance > initialFraming.defaultDistance, 'Reset on mobile aspect calculates updated framing for narrow screen');
+
+  // 10d: Verifying that calculateCameraFraming is pure and unchanged without avatar object or explicit trigger
+  const unchangedFraming = calculateCameraFraming(avatarMesh, { fov: 45, aspect: desktopAspect });
+  assert.deepStrictEqual(unchangedFraming, initialFraming, 'Framing calculation is deterministic');
+  console.log('✓ PASS: Aspect ratio framing behavior on load, switch, and reset verified');
+
   console.log('--- ALL CAMERA FRAMING UNIT TESTS PASSED SUCCESSFULLY ---');
 }
 

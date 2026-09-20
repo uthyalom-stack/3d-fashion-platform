@@ -16,34 +16,31 @@ export interface CameraControlsProps {
 
 export const Controls = forwardRef<CameraControlsRef, CameraControlsProps>(({ enabled = true, avatarScene }, ref) => {
   const controlsRef = useRef<OrbitControlsImpl>(null);
-  const prevAvatarRef = useRef<THREE.Object3D | null>(null);
   const { camera, size } = useThree();
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+
   const [framing, setFraming] = useState<CameraFramingResult | null>(null);
 
-  const aspect = size.width > 0 && size.height > 0 ? size.width / size.height : 1.0;
-
-  // Recalculate camera framing when avatarScene or viewport aspect ratio changes
+  // Recalculate camera framing ONLY when avatarScene initially loads or changes (NOT on viewport resize)
   useEffect(() => {
     if (!avatarScene) return;
 
     const targetObject = resolveAvatarRoot(avatarScene) ?? avatarScene;
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
     const fov = perspectiveCamera.fov ?? 45;
+    const currentSize = sizeRef.current;
+    const aspect = currentSize.width > 0 && currentSize.height > 0 ? currentSize.width / currentSize.height : 1.0;
 
     const calculatedFraming = calculateCameraFraming(targetObject, { fov, aspect });
     setFraming(calculatedFraming);
 
-    // Reposition camera and target ONLY on initial load or avatar model switch
-    const isNewAvatar = prevAvatarRef.current !== avatarScene;
-    if (isNewAvatar) {
-      prevAvatarRef.current = avatarScene;
-      if (controlsRef.current) {
-        controlsRef.current.object.position.set(...calculatedFraming.position);
-        controlsRef.current.target.set(...calculatedFraming.target);
-        controlsRef.current.update();
-      }
+    if (controlsRef.current) {
+      controlsRef.current.object.position.set(...calculatedFraming.position);
+      controlsRef.current.target.set(...calculatedFraming.target);
+      controlsRef.current.update();
     }
-  }, [avatarScene, camera, aspect]);
+  }, [avatarScene, camera]);
 
   useImperativeHandle(ref, () => ({
     resetCamera: () => {
@@ -52,6 +49,9 @@ export const Controls = forwardRef<CameraControlsRef, CameraControlsProps>(({ en
       const targetObject = resolveAvatarRoot(avatarScene) ?? avatarScene;
       const perspectiveCamera = camera as THREE.PerspectiveCamera;
       const fov = perspectiveCamera.fov ?? 45;
+      const currentSize = sizeRef.current;
+      const aspect = currentSize.width > 0 && currentSize.height > 0 ? currentSize.width / currentSize.height : 1.0;
+
       const calculatedFraming = calculateCameraFraming(targetObject, { fov, aspect });
 
       setFraming(calculatedFraming);
