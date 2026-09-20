@@ -117,7 +117,7 @@ export const Scene = forwardRef<CameraControlsRef, SceneProps>(
         )}
 
         {/* Orbit Controls */}
-        <Controls ref={ref} />
+        <Controls ref={ref} avatarScene={avatarScene} />
       </>
     );
   }
